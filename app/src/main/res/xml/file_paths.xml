@@ -1,0 +1,6 @@
+<?xml version="1.0" encoding="utf-8"?>
+<paths>
+    <!-- Torrent downloads shared with the player / other apps -->
+    <external-files-path name="torrents" path="torrents/" />
+    <cache-path name="cache" path="/" />
+</paths>

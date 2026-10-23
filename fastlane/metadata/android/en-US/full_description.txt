@@ -1,0 +1,16 @@
+OpenReel is a lightweight, open-source media player.
+
+Features:
+* Play local video and audio files
+* Play network streams and shares (HTTP/HLS, SMB, FTP, DLNA)
+* Download torrents and stream them while they download
+* Send files to nearby devices over local Wi-Fi (no internet or account needed)
+* Hardware and software decoding, external and styled subtitles, audio sync,
+  playback speed, gesture controls, background audio
+
+OpenReel has no ads, no accounts, no analytics, and no cloud services. The
+torrent feature uses the BitTorrent protocol; please only download content you
+are legally entitled to. Local sharing works directly between devices on the
+same network and sends nothing to any server.
+
+Powered by mpv (libmpv) for playback and libtorrent for downloads.

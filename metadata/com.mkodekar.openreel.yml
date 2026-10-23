@@ -1,0 +1,31 @@
+# Template for submission to https://gitlab.com/fdroid/fdroiddata
+# Place as metadata/com.mkodekar.openreel.yml in that repo (not this one).
+Categories:
+  - Multimedia
+License: GPL-3.0-or-later
+SourceCode: https://example.com/your/openreel   # TODO: your repo URL
+IssueTracker: https://example.com/your/openreel/issues   # TODO
+AuthorName: OpenReel contributors
+
+AutoName: OpenReel
+Description: |-
+  See fastlane/metadata/android/en-US/full_description.txt
+
+RepoType: git
+Repo: https://example.com/your/openreel   # TODO
+
+Builds:
+  - versionName: 0.1.0
+    versionCode: 1
+    commit: v0.1.0
+    subdir: app
+    gradle:
+      - yes
+    # libmpv .so files are built from source by F-Droid's buildserver or supplied
+    # via a prebuild step. See docs/ before first submission; prebuilt binaries
+    # without a reproducible source build are rejected.
+
+AutoUpdateMode: Version v%v
+UpdateCheckMode: Tags
+CurrentVersion: 0.1.0
+CurrentVersionCode: 1

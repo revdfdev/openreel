@@ -1,0 +1,12 @@
+*.iml
+.gradle/
+/local.properties
+/.idea/
+.DS_Store
+/build/
+/app/build/
+/captures/
+.externalNativeBuild/
+.cxx/
+# libmpv prebuilt binaries are added locally, not committed (large, built externally)
+/app/src/main/jniLibs/
