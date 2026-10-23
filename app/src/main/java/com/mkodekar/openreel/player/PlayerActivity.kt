@@ -69,7 +69,7 @@ class PlayerActivity : ComponentActivity() {
             init()
             setHardwareDecoding(settings.hardwareDecoding)
         }
-        controls = PlayerControls(this, mpv)
+        controls = PlayerControls(this, mpv, onTracks = { showTrackMenu() })
 
         val root = FrameLayout(this).apply {
             addView(surface, FrameLayout.LayoutParams(-1, -1))
@@ -121,6 +121,48 @@ class PlayerActivity : ComponentActivity() {
                 delay(2000)
             }
         }
+    }
+
+    // --- Audio / subtitle tracks (kept to one simple menu) ------------------
+    private val pickSubtitle =
+        registerForActivityResult(androidx.activity.result.contract.ActivityResultContracts.OpenDocument()) { uri ->
+            uri?.let { mpv.addSubtitle(it.toString()) }
+        }
+
+    private fun showTrackMenu() {
+        val options = arrayOf("Subtitles", "Audio", "Add subtitle file…")
+        android.app.AlertDialog.Builder(this)
+            .setItems(options) { _, which ->
+                when (which) {
+                    0 -> chooseTrack("Subtitles", mpv.subtitleTracks(), allowOff = true) { id ->
+                        if (id == null) mpv.disableSubtitle() else mpv.selectSubtitle(id)
+                    }
+                    1 -> chooseTrack("Audio", mpv.audioTracks(), allowOff = false) { id ->
+                        id?.let { mpv.selectAudio(it) }
+                    }
+                    2 -> pickSubtitle.launch(arrayOf("*/*"))
+                }
+            }
+            .show()
+    }
+
+    private fun chooseTrack(
+        title: String, tracks: List<MpvCore.Track>, allowOff: Boolean, onPick: (Int?) -> Unit,
+    ) {
+        val labels = buildList {
+            if (allowOff) add("Off")
+            addAll(tracks.map { t -> listOfNotNull(t.title.ifBlank { "Track ${t.id}" }, t.lang).joinToString(" · ") })
+        }
+        if (labels.isEmpty()) {
+            Toast.makeText(this, "No $title tracks", Toast.LENGTH_SHORT).show(); return
+        }
+        android.app.AlertDialog.Builder(this)
+            .setTitle(title)
+            .setItems(labels.toTypedArray()) { _, i ->
+                val idx = if (allowOff) i - 1 else i
+                onPick(if (idx < 0) null else tracks[idx].id)
+            }
+            .show()
     }
 
     private fun startPlayback(uri: String) {

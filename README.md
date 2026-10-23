@@ -55,6 +55,8 @@ like the FOSS players mpv-android / mpvKt do:
 4. Replace the `TODO(libmpv)` calls in [`player/MpvCore.kt`](app/src/main/java/com/mkodekar/openreel/player/MpvCore.kt)
    with the real `MPVLib.*` calls (notes are inline).
 
+**Full step-by-step with exact method bodies: [docs/libmpv-wiring.md](docs/libmpv-wiring.md).**
+
 mpv gives you, in one library, what MX Player split across `libffmpeg.mx.so`
 (decode), `libmxass.so`/`libft2.mx.so`/`libfribidi.so` (styled subtitles), and
 `libsmb2.so` (network shares).

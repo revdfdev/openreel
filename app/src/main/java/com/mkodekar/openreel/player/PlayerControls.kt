@@ -20,12 +20,19 @@ import android.widget.TextView
 class PlayerControls(
     context: Context,
     private val mpv: MpvCore,
+    private val onTracks: () -> Unit,
 ) : FrameLayout(context), MpvCore.Observer {
 
     private val playPause = ImageButton(context).apply {
         setImageResource(android.R.drawable.ic_media_pause)
         setBackgroundColor(Color.TRANSPARENT)
         setOnClickListener { mpv.togglePause() }
+    }
+    private val tracksBtn = ImageButton(context).apply {
+        setImageResource(android.R.drawable.ic_menu_sort_by_size)
+        setBackgroundColor(Color.TRANSPARENT)
+        contentDescription = "Audio & subtitles"
+        setOnClickListener { onTracks() }
     }
     private val seekBar = SeekBar(context).apply { max = 1000 }
     private val timeLabel = TextView(context).apply {
@@ -43,6 +50,7 @@ class PlayerControls(
             addView(playPause)
             addView(seekBar, LinearLayout.LayoutParams(0, -2, 1f))
             addView(timeLabel)
+            addView(tracksBtn)
         }
         addView(bar, LayoutParams(-1, -2, Gravity.BOTTOM))
 

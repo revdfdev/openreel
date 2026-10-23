@@ -24,8 +24,21 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         fun onPauseChanged(paused: Boolean)
     }
 
+    /** One selectable audio or subtitle track from mpv's "track-list". */
+    data class Track(val id: Int, val type: String, val title: String, val lang: String?, val selected: Boolean)
+
     private var attached = false
     var observer: Observer? = null
+
+    /** Updated from the "track-list" property once libmpv is wired. */
+    @Volatile var tracks: List<Track> = emptyList(); private set
+
+    fun audioTracks() = tracks.filter { it.type == "audio" }
+    fun subtitleTracks() = tracks.filter { it.type == "sub" }
+
+    fun selectAudio(id: Int) { /* TODO: MPVLib.setPropertyInt("aid", id) */ }
+    fun selectSubtitle(id: Int) { /* TODO: MPVLib.setPropertyInt("sid", id) */ }
+    fun disableSubtitle() { /* TODO: MPVLib.setPropertyString("sid", "no") */ }
 
     @Volatile var paused = false; private set
     @Volatile var positionMs = 0L; private set
