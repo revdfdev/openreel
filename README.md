@@ -68,7 +68,7 @@ mpv gives you, in one library, what MX Player split across `libffmpeg.mx.so`
 - [x] Minimal permissions, each tied to a real feature
 - [x] Full GPL-3.0 license text in `LICENSE`
 - [x] SPDX license headers on all source files
-- [ ] Replace the placeholder launcher icon (`res/drawable/ic_launcher.xml`)
+- [x] Adaptive launcher icon in place (generic play glyph — rebrand `res/drawable/ic_launcher_*.xml` if you want a custom look)
 - [ ] Reproducible build verified (compile libmpv from source — see docs/libmpv-wiring.md §7)
 - [ ] Submit a metadata YAML to <https://gitlab.com/fdroid/fdroiddata>
       (template in `fastlane/` + `metadata/com.mkodekar.openreel.yml`)
