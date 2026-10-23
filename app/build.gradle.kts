@@ -14,11 +14,6 @@ android {
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
-
-        // We ship arm first (99% of phones); add x86_64 for emulators/Chromebooks.
-        ndk {
-            abiFilters += listOf("arm64-v8a", "armeabi-v7a", "x86_64")
-        }
     }
 
     buildTypes {
@@ -70,9 +65,9 @@ dependencies {
 
     // --- Torrent (module 3) ---
     implementation(libs.libtorrent4j)
-    implementation(libs.libtorrent4j.arm64)
-    implementation(libs.libtorrent4j.arm)
-    implementation(libs.libtorrent4j.x86_64)
+    implementation(libs.libtorrent4jArm64)
+    implementation(libs.libtorrent4jArm)
+    implementation(libs.libtorrent4jX64)
 
     // --- Share over local Wi-Fi (module 4) ---
     implementation(libs.nanohttpd)

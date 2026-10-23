@@ -13,10 +13,10 @@ No ads, no accounts, no trackers, no cloud. Built for F-Droid.
 
 ## Status
 
-Early scaffold. The structure, build config, manifest, and the torrent/share
-engines are in place. The **playback engine (libmpv) is not yet wired** — see
-below. There is no Android SDK/NDK on the machine this was scaffolded on, so it
-has not been compiled yet.
+**Builds and installs.** `./gradlew assembleDebug` produces per-ABI debug APKs
+(arm64-v8a, armeabi-v7a, x86_64). The UI, settings, torrent, and share modules
+run; **video does not display until libmpv is wired** (the player calls are
+stubbed) — see below.
 
 ## Modules
 

@@ -269,8 +269,10 @@ class PlayerActivity : ComponentActivity() {
         resume.save(mediaKey, mpv.positionMs, mpv.durationMs)
     }
 
-    override fun onPictureInPictureModeChanged(isInPip: Boolean) {
-        super.onPictureInPictureModeChanged(isInPip)
+    override fun onPictureInPictureModeChanged(
+        isInPip: Boolean, newConfig: android.content.res.Configuration,
+    ) {
+        super.onPictureInPictureModeChanged(isInPip, newConfig)
         controls.visibility = if (isInPip) android.view.View.GONE else android.view.View.VISIBLE
     }
 

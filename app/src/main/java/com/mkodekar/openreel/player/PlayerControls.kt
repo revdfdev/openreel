@@ -80,17 +80,21 @@ class PlayerControls(
     }
 
     // MpvCore.Observer -------------------------------------------------------
-    override fun onPosition(positionMs: Long, durationMs: Long) = post {
-        if (!userScrubbing && durationMs > 0) {
-            seekBar.progress = (positionMs * 1000 / durationMs).toInt()
+    override fun onPosition(positionMs: Long, durationMs: Long) {
+        post {
+            if (!userScrubbing && durationMs > 0) {
+                seekBar.progress = (positionMs * 1000 / durationMs).toInt()
+            }
+            timeLabel.text = "${fmt(positionMs)} / ${fmt(durationMs)}"
         }
-        timeLabel.text = "${fmt(positionMs)} / ${fmt(durationMs)}"
     }
 
-    override fun onPauseChanged(paused: Boolean) = post {
-        playPause.setImageResource(
-            if (paused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
-        )
+    override fun onPauseChanged(paused: Boolean) {
+        post {
+            playPause.setImageResource(
+                if (paused) android.R.drawable.ic_media_play else android.R.drawable.ic_media_pause
+            )
+        }
     }
 
     private fun fmt(ms: Long): String {

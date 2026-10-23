@@ -46,7 +46,8 @@ class TorrentEngine(private val downloadDir: File) {
                 }
             }
         })
-        session.download(magnet, downloadDir)
+        // Magnet overload requires the flags arg; start sequential for streaming.
+        session.download(magnet, downloadDir, org.libtorrent4j.TorrentFlags.SEQUENTIAL_DOWNLOAD)
     }
 
     /**

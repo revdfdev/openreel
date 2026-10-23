@@ -30,7 +30,7 @@ object ShareClient {
         conn.connectTimeout = 5000
         val out = File(destDir, item.name)
         conn.inputStream.use { input ->
-            out.outputStream.use { output ->
+            out.outputStream().use { output ->
                 val buf = ByteArray(64 * 1024)
                 var total = 0L
                 while (true) {

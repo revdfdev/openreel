@@ -96,7 +96,7 @@ class ShareActivity : ComponentActivity() {
             val name = queryName(uri) ?: return@mapNotNull null
             val out = File(dir, name)
             contentResolver.openInputStream(uri)?.use { input ->
-                out.outputStream.use { input.copyTo(it) }
+                out.outputStream().use { input.copyTo(it) }
             }
             out
         }
