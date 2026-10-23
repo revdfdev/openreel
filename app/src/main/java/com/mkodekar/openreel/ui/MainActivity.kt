@@ -16,6 +16,7 @@ import androidx.compose.ui.unit.dp
 import com.mkodekar.openreel.browse.MediaRepository
 import com.mkodekar.openreel.browse.VideoItem
 import com.mkodekar.openreel.player.PlayerActivity
+import com.mkodekar.openreel.share.ShareActivity
 
 /**
  * Home / browse screen. Tabs mirror the four modules:
@@ -24,6 +25,7 @@ import com.mkodekar.openreel.player.PlayerActivity
  */
 class MainActivity : ComponentActivity() {
 
+    @OptIn(androidx.compose.material3.ExperimentalMaterial3Api::class)
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val repo = MediaRepository(this)
@@ -33,7 +35,16 @@ class MainActivity : ComponentActivity() {
                 // TODO: request READ_MEDIA_VIDEO before querying; do query off main thread.
                 LaunchedEffect(Unit) { videos = runCatching { repo.queryVideos() }.getOrDefault(emptyList()) }
 
-                Scaffold(topBar = { TopAppBar(title = { Text("OpenReel") }) }) { pad ->
+                Scaffold(topBar = {
+                    TopAppBar(
+                        title = { Text("OpenReel") },
+                        actions = {
+                            TextButton(onClick = {
+                                startActivity(Intent(this@MainActivity, ShareActivity::class.java))
+                            }) { Text("Share") }
+                        },
+                    )
+                }) { pad ->
                     LazyColumn(Modifier.padding(pad).fillMaxSize()) {
                         items(videos) { v ->
                             ListItem(

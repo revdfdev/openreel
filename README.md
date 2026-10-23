@@ -26,7 +26,7 @@ has not been compiled yet.
 | `player` | Player screen, gestures, HW/SW decode, subtitles, audio sync | **libmpv + libass** |
 | `stream` | Play network URLs / SMB·FTP·DLNA shares | libmpv (built-in protocols) |
 | `torrent` | Download + sequential stream-while-downloading | **libtorrent4j** (Apache-2.0) |
-| `share` | Local Wi-Fi device-to-device transfer, QR pairing | NanoHTTPD + ZXing + Wi-Fi Direct |
+| `share` | Device-to-device transfer, QR pairing | NanoHTTPD + ZXing (same Wi-Fi/hotspot; Wi-Fi Direct is a future enhancement) |
 
 Dropped on purpose: cloud drives, Chromecast, music widgets/lyrics, accounts,
 any bundled online content catalog.

@@ -85,6 +85,11 @@
             android:exported="false"
             android:label="@string/settings" />
 
+        <activity
+            android:name=".share.ShareActivity"
+            android:exported="false"
+            android:label="@string/tab_share" />
+
         <!-- Background audio / PiP keep-alive -->
         <service
             android:name=".player.PlaybackService"
