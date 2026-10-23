@@ -18,10 +18,39 @@ import android.view.SurfaceView
  */
 class MpvCore(private val context: Context) : SurfaceHolder.Callback {
 
+    /** Observer the controls overlay binds to for live position/state. */
+    interface Observer {
+        fun onPosition(positionMs: Long, durationMs: Long)
+        fun onPauseChanged(paused: Boolean)
+    }
+
     private var attached = false
+    var observer: Observer? = null
+
+    @Volatile var paused = false; private set
+    @Volatile var positionMs = 0L; private set
+    @Volatile var durationMs = 0L; private set
 
     fun attach(surfaceView: SurfaceView) {
         surfaceView.holder.addCallback(this)
+    }
+
+    /** Called from the libmpv event thread (MPV_EVENT_PROPERTY_CHANGE) once wired. */
+    fun onPropertyChange(name: String, value: Long) {
+        when (name) {
+            "time-pos" -> positionMs = value * 1000
+            "duration" -> durationMs = value * 1000
+        }
+        observer?.onPosition(positionMs, durationMs)
+    }
+
+    /** Fraction 0..1 of the current file played -- feeds torrent piece prioritisation. */
+    fun playedFraction(): Double =
+        if (durationMs > 0) positionMs.toDouble() / durationMs else 0.0
+
+    fun seekTo(ms: Long) {
+        // TODO: MPVLib.command(arrayOf("seek", (ms/1000).toString(), "absolute"))
+        positionMs = ms
     }
 
     fun init() {
@@ -38,7 +67,11 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         // TODO(libmpv): MPVLib.command(arrayOf("loadfile", uri))
     }
 
-    fun togglePause() { /* TODO: MPVLib.setPropertyBoolean("pause", !paused) */ }
+    fun togglePause() {
+        paused = !paused
+        // TODO: MPVLib.setPropertyBoolean("pause", paused)
+        observer?.onPauseChanged(paused)
+    }
 
     /** MX-style HW/SW decoder switch. */
     fun setHardwareDecoding(enabled: Boolean) {

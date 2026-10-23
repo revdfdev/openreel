@@ -66,6 +66,21 @@ class TorrentEngine(private val downloadDir: File) {
     fun progress(): Float = handle?.status()?.progress() ?: 0f
     fun downloadRate(): Int = handle?.status()?.downloadPayloadRate() ?: 0
 
+    /** Metadata (file list, piece map) has arrived -- required before anything else. */
+    fun hasMetadata(): Boolean = handle?.torrentFile() != null
+
+    /**
+     * True once enough of the start of the file is on disk to begin playback.
+     * We require the first few pieces so mpv has a header + initial frames.
+     */
+    fun readyToStartPlayback(minLeadingPieces: Int = 6): Boolean {
+        val h = handle ?: return false
+        val ti = h.torrentFile() ?: return false
+        val n = minOf(minLeadingPieces, ti.numPieces())
+        for (i in 0 until n) if (!h.havePiece(i)) return false
+        return true
+    }
+
     /** Largest file in the torrent -- usually the video to hand to the player. */
     fun primaryVideoPath(): File? {
         val h = handle ?: return null
