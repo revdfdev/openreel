@@ -1,10 +1,17 @@
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 package com.mkodekar.openreel.ui
 
+import android.Manifest
 import android.content.Intent
+import android.content.pm.PackageManager
 import android.net.Uri
+import android.os.Build
 import android.os.Bundle
 import androidx.activity.ComponentActivity
+import androidx.activity.compose.rememberLauncherForActivityResult
 import androidx.activity.compose.setContent
+import androidx.activity.result.contract.ActivityResultContracts
+import androidx.core.content.ContextCompat
 import androidx.compose.foundation.clickable
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.lazy.LazyColumn
@@ -67,13 +74,32 @@ class MainActivity : ComponentActivity() {
     @Composable
     private fun VideosTab(repo: MediaRepository) {
         var videos by remember { mutableStateOf(emptyList<VideoItem>()) }
-        // TODO: request READ_MEDIA_VIDEO before querying; move query off main thread.
-        LaunchedEffect(Unit) {
-            videos = runCatching { repo.queryVideos() }.getOrDefault(emptyList())
+        var granted by remember { mutableStateOf(hasMediaPermission()) }
+
+        val request = rememberLauncherForActivityResult(
+            ActivityResultContracts.RequestMultiplePermissions()
+        ) { result -> granted = result.values.any { it } || hasMediaPermission() }
+
+        LaunchedEffect(Unit) { if (!granted) request.launch(mediaPermissions()) }
+        LaunchedEffect(granted) {
+            if (granted) videos = runCatching { repo.queryVideos() }.getOrDefault(emptyList())
+        }
+
+        if (!granted) {
+            Column(
+                Modifier.fillMaxSize().padding(24.dp),
+                horizontalAlignment = androidx.compose.ui.Alignment.CenterHorizontally,
+                verticalArrangement = Arrangement.Center,
+            ) {
+                Text("OpenReel needs permission to list your videos.")
+                Spacer(Modifier.height(12.dp))
+                Button(onClick = { request.launch(mediaPermissions()) }) { Text("Grant access") }
+            }
+            return
         }
         if (videos.isEmpty()) {
             Box(Modifier.fillMaxSize(), contentAlignment = androidx.compose.ui.Alignment.Center) {
-                Text("No videos found (grant media permission).")
+                Text("No videos found.")
             }
             return
         }
@@ -97,7 +123,7 @@ class MainActivity : ComponentActivity() {
             OutlinedTextField(
                 value = url,
                 onValueChange = { url = it },
-                label = { Text("Stream URL (http, smb, rtsp, ftp…)") },
+                label = { Text("Stream URL (http, smb, rtsp, ftpâ€¦)") },
                 singleLine = true,
                 modifier = Modifier.fillMaxWidth(),
             )
@@ -134,6 +160,17 @@ class MainActivity : ComponentActivity() {
         if (uri.isBlank()) return
         startActivity(Intent(this, PlayerActivity::class.java).setData(Uri.parse(uri)))
     }
+
+    private fun mediaPermissions(): Array<String> =
+        if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.TIRAMISU)
+            arrayOf(Manifest.permission.READ_MEDIA_VIDEO, Manifest.permission.READ_MEDIA_AUDIO)
+        else
+            arrayOf(Manifest.permission.READ_EXTERNAL_STORAGE)
+
+    private fun hasMediaPermission(): Boolean =
+        mediaPermissions().any {
+            ContextCompat.checkSelfPermission(this, it) == PackageManager.PERMISSION_GRANTED
+        }
 
     private fun formatDuration(ms: Long): String {
         val s = ms / 1000; return "%d:%02d".format(s / 60, s % 60)

@@ -1,3 +1,4 @@
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 package com.mkodekar.openreel.share
 
 import android.content.Intent
@@ -120,7 +121,7 @@ class ShareActivity : ComponentActivity() {
             val url = result.contents ?: return@rememberLauncherForActivityResult
             baseUrl = url
             scope.launch {
-                status = "Connecting…"
+                status = "Connectingâ€¦"
                 items = withContext(Dispatchers.IO) {
                     runCatching { ShareClient.fetchManifest(url) }.getOrElse {
                         status = "Could not connect: ${it.message}"; emptyList()
@@ -146,7 +147,7 @@ class ShareActivity : ComponentActivity() {
                             TextButton(onClick = {
                                 val url = baseUrl ?: return@TextButton
                                 scope.launch {
-                                    status = "Downloading ${item.name}…"
+                                    status = "Downloading ${item.name}â€¦"
                                     withContext(Dispatchers.IO) {
                                         runCatching {
                                             ShareClient.download(url, item, downloadDir())

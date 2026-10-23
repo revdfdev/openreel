@@ -1,3 +1,4 @@
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 package com.mkodekar.openreel.player
 
 import android.content.ComponentName
@@ -103,7 +104,7 @@ class PlayerActivity : ComponentActivity() {
 
     private fun beginTorrentStream(magnet: String) {
         val svc = torrent ?: return
-        Toast.makeText(this, "Fetching torrent…", Toast.LENGTH_SHORT).show()
+        Toast.makeText(this, "Fetching torrentâ€¦", Toast.LENGTH_SHORT).show()
         svc.stream(magnet) { /* handle added; polling below drives the rest */ }
 
         lifecycleScope.launch {
@@ -130,7 +131,7 @@ class PlayerActivity : ComponentActivity() {
         }
 
     private fun showTrackMenu() {
-        val options = arrayOf("Subtitles", "Audio", "Add subtitle file…")
+        val options = arrayOf("Subtitles", "Audio", "Add subtitle fileâ€¦")
         android.app.AlertDialog.Builder(this)
             .setItems(options) { _, which ->
                 when (which) {
@@ -151,7 +152,7 @@ class PlayerActivity : ComponentActivity() {
     ) {
         val labels = buildList {
             if (allowOff) add("Off")
-            addAll(tracks.map { t -> listOfNotNull(t.title.ifBlank { "Track ${t.id}" }, t.lang).joinToString(" · ") })
+            addAll(tracks.map { t -> listOfNotNull(t.title.ifBlank { "Track ${t.id}" }, t.lang).joinToString(" Â· ") })
         }
         if (labels.isEmpty()) {
             Toast.makeText(this, "No $title tracks", Toast.LENGTH_SHORT).show(); return

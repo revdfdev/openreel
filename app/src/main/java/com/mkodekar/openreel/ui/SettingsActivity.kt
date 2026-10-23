@@ -1,3 +1,4 @@
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 package com.mkodekar.openreel.ui
 
 import android.os.Bundle
@@ -94,7 +95,7 @@ class SettingsActivity : ComponentActivity() {
             Text(label, Modifier.weight(1f))
             OutlinedButton(onClick = {
                 value = (value - step).coerceAtLeast(min); onChange(value)
-            }) { Text("−") }
+            }) { Text("âˆ’") }
             Text("$value$unit", Modifier.padding(horizontal = 12.dp))
             OutlinedButton(onClick = {
                 value = (value + step).coerceAtMost(max); onChange(value)

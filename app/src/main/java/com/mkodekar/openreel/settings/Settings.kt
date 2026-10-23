@@ -1,3 +1,4 @@
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 package com.mkodekar.openreel.settings
 
 import android.content.Context

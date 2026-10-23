@@ -1,3 +1,4 @@
+﻿// SPDX-License-Identifier: GPL-3.0-or-later
 package com.mkodekar.openreel.torrent
 
 import org.libtorrent4j.AlertListener
@@ -37,7 +38,8 @@ class TorrentEngine(private val downloadDir: File) {
             override fun alert(alert: Alert<*>) {
                 if (alert is AddTorrentAlert) {
                     val h = alert.handle()
-                    h.setFlags(h.flags().or_(org.libtorrent4j.TorrentFlags.SEQUENTIAL_DOWNLOAD))
+                    // set_flags() ORs the given flags in (doesn't clear others).
+                    h.setFlags(org.libtorrent4j.TorrentFlags.SEQUENTIAL_DOWNLOAD)
                     h.resume()
                     handle = h
                     onReady(h)
