@@ -14,6 +14,7 @@ import android.widget.FrameLayout
 import android.widget.Toast
 import androidx.activity.ComponentActivity
 import androidx.lifecycle.lifecycleScope
+import com.mkodekar.openreel.settings.Settings
 import com.mkodekar.openreel.torrent.TorrentService
 import kotlinx.coroutines.delay
 import kotlinx.coroutines.isActive
@@ -40,6 +41,7 @@ class PlayerActivity : ComponentActivity() {
     private lateinit var controls: PlayerControls
     private lateinit var gestures: GestureDetector
     private lateinit var resume: ResumeStore
+    private lateinit var settings: Settings
     private lateinit var audio: AudioManager
 
     private var mediaKey: String = ""
@@ -58,10 +60,15 @@ class PlayerActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         resume = ResumeStore(this)
+        settings = Settings(this)
         audio = getSystemService(AUDIO_SERVICE) as AudioManager
 
         surface = SurfaceView(this)
-        mpv = MpvCore(this).apply { attach(surface); init() }
+        mpv = MpvCore(this).apply {
+            attach(surface)
+            init()
+            setHardwareDecoding(settings.hardwareDecoding)
+        }
         controls = PlayerControls(this, mpv)
 
         val root = FrameLayout(this).apply {
@@ -118,8 +125,10 @@ class PlayerActivity : ComponentActivity() {
 
     private fun startPlayback(uri: String) {
         mpv.play(uri)
-        val at = resume.load(mediaKey)
-        if (at > 0) mpv.seekTo(at)
+        if (settings.autoResume) {
+            val at = resume.load(mediaKey)
+            if (at > 0) mpv.seekTo(at)
+        }
     }
 
     private inner class PlayerGestures : GestureDetector.SimpleOnGestureListener() {
@@ -133,7 +142,7 @@ class PlayerActivity : ComponentActivity() {
             if (e1 == null) return false
             val horizontal = abs(e2.x - e1.x) > abs(e2.y - e1.y)
             when {
-                horizontal -> mpv.seekBy(if (dx < 0) 2 else -2)
+                horizontal -> mpv.seekBy(if (dx < 0) settings.seekStepSeconds else -settings.seekStepSeconds)
                 e1.x < surface.width / 2f -> adjustBrightness(dy)
                 else -> adjustVolume(dy)
             }
