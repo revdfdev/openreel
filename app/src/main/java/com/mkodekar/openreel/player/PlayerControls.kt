@@ -22,6 +22,7 @@ class PlayerControls(
     context: Context,
     private val mpv: MpvCore,
     private val onTracks: () -> Unit,
+    private val onOptions: () -> Unit,
 ) : FrameLayout(context), MpvCore.Observer {
 
     private val playPause = ImageButton(context).apply {
@@ -34,6 +35,12 @@ class PlayerControls(
         setBackgroundColor(Color.TRANSPARENT)
         contentDescription = "Audio & subtitles"
         setOnClickListener { onTracks() }
+    }
+    private val optionsBtn = ImageButton(context).apply {
+        setImageResource(android.R.drawable.ic_menu_manage)
+        setBackgroundColor(Color.TRANSPARENT)
+        contentDescription = "Speed & sleep timer"
+        setOnClickListener { onOptions() }
     }
     private val seekBar = SeekBar(context).apply { max = 1000 }
     private val timeLabel = TextView(context).apply {
@@ -52,6 +59,7 @@ class PlayerControls(
             addView(seekBar, LinearLayout.LayoutParams(0, -2, 1f))
             addView(timeLabel)
             addView(tracksBtn)
+            addView(optionsBtn)
         }
         addView(bar, LayoutParams(-1, -2, Gravity.BOTTOM))
 

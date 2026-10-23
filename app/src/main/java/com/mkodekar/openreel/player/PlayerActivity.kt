@@ -70,7 +70,7 @@ class PlayerActivity : ComponentActivity() {
             init()
             setHardwareDecoding(settings.hardwareDecoding)
         }
-        controls = PlayerControls(this, mpv, onTracks = { showTrackMenu() })
+        controls = PlayerControls(this, mpv, onTracks = { showTrackMenu() }, onOptions = { showOptionsMenu() })
 
         val root = FrameLayout(this).apply {
             addView(surface, FrameLayout.LayoutParams(-1, -1))
@@ -120,6 +120,59 @@ class PlayerActivity : ComponentActivity() {
             while (isActive) {
                 engine.prioritizeAround(fileIndex = 0, playedFraction = mpv.playedFraction())
                 delay(2000)
+            }
+        }
+    }
+
+    // --- Options: playback speed + sleep timer (one menu, no screen clutter) -
+    private val sleepHandler = android.os.Handler(android.os.Looper.getMainLooper())
+    private var sleepRunnable: Runnable? = null
+
+    private fun showOptionsMenu() {
+        android.app.AlertDialog.Builder(this)
+            .setItems(arrayOf("Playback speed", "Sleep timer")) { _, which ->
+                if (which == 0) showSpeedMenu() else showSleepMenu()
+            }
+            .show()
+    }
+
+    private fun showSpeedMenu() {
+        val speeds = doubleArrayOf(0.5, 0.75, 1.0, 1.25, 1.5, 2.0)
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Playback speed")
+            .setItems(speeds.map { "${it}x" }.toTypedArray()) { _, i -> mpv.setSpeed(speeds[i]) }
+            .show()
+    }
+
+    private fun showSleepMenu() {
+        val mins = intArrayOf(0, 15, 30, 60, 90)
+        val labels = mins.map { if (it == 0) "Off" else "$it min" }.toTypedArray()
+        android.app.AlertDialog.Builder(this)
+            .setTitle("Sleep timer")
+            .setItems(labels) { _, i -> setSleepTimer(mins[i]) }
+            .show()
+    }
+
+    private fun setSleepTimer(minutes: Int) {
+        sleepRunnable?.let { sleepHandler.removeCallbacks(it) }
+        if (minutes <= 0) {
+            Toast.makeText(this, "Sleep timer off", Toast.LENGTH_SHORT).show(); return
+        }
+        sleepRunnable = Runnable {
+            if (!mpv.paused) mpv.togglePause()
+            Toast.makeText(this, "Paused by sleep timer", Toast.LENGTH_LONG).show()
+        }.also { sleepHandler.postDelayed(it, minutes * 60_000L) }
+        Toast.makeText(this, "Sleeping in $minutes min", Toast.LENGTH_SHORT).show()
+    }
+
+    // --- Picture-in-Picture (auto when you leave the player; zero UI) --------
+    override fun onUserLeaveHint() {
+        super.onUserLeaveHint()
+        if (android.os.Build.VERSION.SDK_INT >= android.os.Build.VERSION_CODES.O && !mpv.paused) {
+            runCatching {
+                enterPictureInPictureMode(
+                    android.app.PictureInPictureParams.Builder().build()
+                )
             }
         }
     }
@@ -216,7 +269,13 @@ class PlayerActivity : ComponentActivity() {
         resume.save(mediaKey, mpv.positionMs, mpv.durationMs)
     }
 
+    override fun onPictureInPictureModeChanged(isInPip: Boolean) {
+        super.onPictureInPictureModeChanged(isInPip)
+        controls.visibility = if (isInPip) android.view.View.GONE else android.view.View.VISIBLE
+    }
+
     override fun onDestroy() {
+        sleepRunnable?.let { sleepHandler.removeCallbacks(it) }
         if (pendingMagnet != null) runCatching { unbindService(conn) }
         mpv.release()
         super.onDestroy()
