@@ -35,8 +35,11 @@ object TorrentNotifications {
     private fun idFor(torrentId: String) = 1000 + abs(torrentId.hashCode() % 100_000)
 
     fun summary(context: Context, items: List<TorrentEngine.Item>): Notification {
-        // Count the three states separately: lumping "not active" together
-        // reported finished downloads as paused.
+        // With a single download, show that download here rather than a
+        // one-line roll-up: grouped children collapse behind the summary, so
+        // the progress bar and actions were hidden in the common case.
+        if (items.size == 1) return forItem(context, items.first(), grouped = false)
+
         val downloading = items.count { !it.finished && !it.paused }
         val paused = items.count { !it.finished && it.paused }
         val done = items.count { it.finished }
@@ -51,9 +54,14 @@ object TorrentNotifications {
             done == 1 -> "Download complete"
             else -> "$done downloads complete"
         }
+        // Each line of the expanded summary names a torrent and its state.
+        val inbox = NotificationCompat.InboxStyle().setSummaryText(text)
+        items.take(5).forEach { inbox.addLine("${it.name} · ${line(it)}") }
+
         return base(context)
             .setContentTitle("OpenReel")
             .setContentText(text)
+            .setStyle(inbox)
             .setGroup(GROUP)
             .setGroupSummary(true)
             .setContentIntent(openApp(context))
@@ -65,10 +73,13 @@ object TorrentNotifications {
         val nm = context.getSystemService(NotificationManager::class.java) ?: return
         val live = mutableSetOf<Int>()
 
-        items.forEach { item ->
-            val nid = idFor(item.id)
-            live += nid
-            runCatching { nm.notify(nid, forItem(context, item)) }
+        // One torrent is already shown by the foreground notification itself.
+        if (items.size > 1) {
+            items.forEach { item ->
+                val nid = idFor(item.id)
+                live += nid
+                runCatching { nm.notify(nid, forItem(context, item, grouped = true)) }
+            }
         }
         // Anything we published before that is no longer present.
         (known - live).forEach { runCatching { nm.cancel(it) } }
@@ -76,14 +87,21 @@ object TorrentNotifications {
         known += live
     }
 
-    private fun forItem(context: Context, item: TorrentEngine.Item): Notification {
+    private fun forItem(
+        context: Context,
+        item: TorrentEngine.Item,
+        grouped: Boolean,
+    ): Notification {
         val pct = (item.progress * 100).toInt()
         val b = base(context)
             .setContentTitle(item.name)
             .setContentText(line(item))
             .setSubText(if (item.totalBytes > 0) bytes(item.totalBytes) else null)
-            .setGroup(GROUP)
+            // BigText keeps the whole status line readable when expanded
+            // instead of ellipsising the speed and ETA away.
+            .setStyle(NotificationCompat.BigTextStyle().bigText(line(item)))
             .setContentIntent(openApp(context))
+        if (grouped) b.setGroup(GROUP)
 
         if (item.finished) {
             b.setProgress(0, 0, false)
