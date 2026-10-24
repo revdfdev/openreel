@@ -149,7 +149,7 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
             true
         }
 
-        handleUri(intent?.dataString)
+        handleUri(incomingUri(intent))
     }
 
     /**
@@ -165,9 +165,31 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
         uiPosition = 0
         uiDuration = 0
         uiLocked = false
-        handleUri(intent.dataString)
+        handleUri(incomingUri(intent))
     }
 
+
+    /**
+     * The media to play. ACTION_VIEW carries it in the intent data, but a
+     * share-sheet ACTION_SEND puts it in EXTRA_STREAM instead, so reading
+     * dataString alone would silently ignore anything shared to us.
+     */
+    private fun incomingUri(intent: Intent?): String? {
+        if (intent == null) return null
+        intent.dataString?.let { return it }
+        if (intent.action == Intent.ACTION_SEND) {
+            val stream = androidx.core.content.IntentCompat.getParcelableExtra(
+                intent, Intent.EXTRA_STREAM, android.net.Uri::class.java
+            )
+            if (stream != null) return stream.toString()
+            // Some apps share a bare URL as text rather than a stream.
+            intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?.trim()
+                ?.takeIf { it.startsWith("http", true) || it.startsWith("magnet:", true) }
+                ?.let { return it }
+        }
+        return null
+    }
 
     /**
      * A human title for the top bar. The last path segment of a content:// URI

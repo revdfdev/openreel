@@ -60,6 +60,7 @@ class ShareActivity : ComponentActivity() {
 
         val themePref = com.mkodekar.openreel.settings.Settings(this).theme
         p2p = WifiDirect(this)
+        val shared = sharedUris(intent)
 
         setContent {
             MxTheme(dark = rememberThemeIsDark(themePref)) {
@@ -73,7 +74,7 @@ class ShareActivity : ComponentActivity() {
                     MxStatusBarScrim()
                     MxToolbar(title = "Share", onBack = { finish() })
                     MxTabStrip(listOf("Send", "Receive"), tab) { tab = it }
-                    if (tab == 0) SendTab() else ReceiveTab()
+                    if (tab == 0) SendTab(shared) else ReceiveTab()
                 }
             }
         }
@@ -92,9 +93,10 @@ class ShareActivity : ComponentActivity() {
     // --- Send ----------------------------------------------------------------
 
     @Composable
-    private fun SendTab() {
+    private fun SendTab(shared: List<Uri>) {
         val scope = rememberCoroutineScope()
         var staged by remember { mutableStateOf<List<File>>(emptyList()) }
+        var preparing by remember { mutableStateOf(shared.isNotEmpty()) }
         val state by p2p.state.collectAsState()
         val hosting = state as? WifiDirect.State.Hosting
 
@@ -116,23 +118,41 @@ class ShareActivity : ComponentActivity() {
             ActivityResultContracts.RequestPermission()
         ) { granted -> if (granted) picker.launch(arrayOf("*/*")) }
 
+        // Arrived through the system share sheet: stage and host straight
+        // away rather than asking the user to pick the files again.
+        LaunchedEffect(shared) {
+            if (shared.isEmpty()) return@LaunchedEffect
+            val files = withContext(Dispatchers.IO) { stageForSharing(shared) }
+            staged = files
+            preparing = false
+            if (files.isNotEmpty()) {
+                startSharing(files)
+                p2p.host()
+            }
+        }
+
         Column(
             Modifier.fillMaxSize().padding(20.dp),
             horizontalAlignment = Alignment.CenterHorizontally,
         ) {
             if (hosting == null) {
                 Spacer(Modifier.height(36.dp))
-                Sonar(active = false) { MxPlayGlyph(26.dp, Mx.colors.textSecondary) }
+                Sonar(active = preparing) { MxPlayGlyph(26.dp, Mx.colors.textSecondary) }
                 Spacer(Modifier.height(30.dp))
                 MxText(
-                    "Pick files to send. Your phone hosts them over Wi-Fi Direct, so no router or internet is needed.",
+                    if (preparing)
+                        "Preparing ${shared.size} file(s) to send…"
+                    else
+                        "Pick files to send. Your phone hosts them over Wi-Fi Direct, so no router or internet is needed.",
                     Mx.type.primary,
                     Mx.colors.textSecondary,
                 )
-                Spacer(Modifier.height(18.dp))
-                MxButton("Choose files") {
-                    if (hasP2pPermission()) picker.launch(arrayOf("*/*"))
-                    else askPermission.launch(WifiDirect.requiredPermission())
+                if (!preparing) {
+                    Spacer(Modifier.height(18.dp))
+                    MxButton("Choose files") {
+                        if (hasP2pPermission()) picker.launch(arrayOf("*/*"))
+                        else askPermission.launch(WifiDirect.requiredPermission())
+                    }
                 }
                 StateNote(state)
             } else {
@@ -356,6 +376,25 @@ class ShareActivity : ComponentActivity() {
         )
         if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) startForegroundService(intent)
         else startService(intent)
+    }
+
+    /**
+     * URIs handed to us by the system share sheet. ACTION_SEND carries one in
+     * EXTRA_STREAM and ACTION_SEND_MULTIPLE carries a list, so both are read
+     * here; anything else gives an empty list and the normal picker is shown.
+     */
+    private fun sharedUris(intent: Intent?): List<Uri> = when (intent?.action) {
+        Intent.ACTION_SEND ->
+            listOfNotNull(
+                androidx.core.content.IntentCompat.getParcelableExtra(
+                    intent, Intent.EXTRA_STREAM, Uri::class.java
+                )
+            )
+        Intent.ACTION_SEND_MULTIPLE ->
+            androidx.core.content.IntentCompat.getParcelableArrayListExtra(
+                intent, Intent.EXTRA_STREAM, Uri::class.java
+            ).orEmpty()
+        else -> emptyList()
     }
 
     private fun stageForSharing(uris: List<Uri>): List<File> {
