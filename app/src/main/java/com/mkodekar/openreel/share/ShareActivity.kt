@@ -211,6 +211,22 @@ class ShareActivity : ComponentActivity() {
             ActivityResultContracts.RequestPermission()
         ) { granted -> if (granted) p2p.discover() }
 
+        // Scanning the host's QR is the fallback when both phones are already
+        // on the same Wi-Fi and forming a P2P group is unnecessary.
+        var scanned by remember { mutableStateOf<String?>(null) }
+        val scanner = rememberLauncherForActivityResult(
+            com.journeyapps.barcodescanner.ScanContract()
+        ) { result -> result.contents?.let { scanned = it } }
+
+        LaunchedEffect(scanned) {
+            val url = scanned ?: return@LaunchedEffect
+            status = "Reading what's on offer…"
+            offered = withContext(Dispatchers.IO) {
+                runCatching { ShareClient.fetchManifest(url) }.getOrDefault(emptyList())
+            }
+            status = if (offered.isEmpty()) "Could not reach that host." else null
+        }
+
         Column(Modifier.fillMaxSize().padding(20.dp)) {
             if (offered.isEmpty()) {
                 Spacer(Modifier.height(20.dp))
@@ -220,13 +236,30 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
                 Spacer(Modifier.height(22.dp))
-                Box(Modifier.fillMaxWidth(), contentAlignment = Alignment.Center) {
+                Row(
+                    Modifier.fillMaxWidth(),
+                    horizontalArrangement = Arrangement.Center,
+                ) {
                     MxButton(
                         if (state is WifiDirect.State.Discovering) "Scanning…"
-                        else "Scan for senders"
+                        else "Find senders"
                     ) {
                         if (hasP2pPermission()) p2p.discover()
                         else askPermission.launch(WifiDirect.requiredPermission())
+                    }
+                    Spacer(Modifier.width(10.dp))
+                    MxButton("Scan QR", filled = false) {
+                        scanner.launch(
+                            com.journeyapps.barcodescanner.ScanOptions()
+                                .setDesiredBarcodeFormats(
+                                    com.journeyapps.barcodescanner.ScanOptions.QR_CODE
+                                )
+                                .setPrompt("Point at the sender's QR code")
+                                .setBeepEnabled(false)
+                                // Follow the device instead of ZXing's
+                                // hard-coded landscape.
+                                .setOrientationLocked(false)
+                        )
                     }
                 }
                 StateNote(state)
@@ -241,7 +274,8 @@ class ShareActivity : ComponentActivity() {
                     }
                 }
             } else {
-                MxSectionLabel("Available from ${joined?.hostUrl.orEmpty()}")
+                val host = joined?.hostUrl ?: scanned.orEmpty()
+                MxSectionLabel("Available from $host")
                 LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
                     items(offered, key = { it.index }) { item ->
                         val p = progress[item.index]
@@ -257,7 +291,7 @@ class ShareActivity : ComponentActivity() {
                                 }
                                 if (p == null) {
                                     MxButton("Get", filled = false) {
-                                        val url = joined?.hostUrl ?: return@MxButton
+                                        val url = joined?.hostUrl ?: scanned ?: return@MxButton
                                         scope.launch {
                                             progress[item.index] = 0f
                                             withContext(Dispatchers.IO) {

@@ -29,7 +29,10 @@ class TorrentService : Service() {
         super.onCreate()
         val dir = File(getExternalFilesDir(null), "torrents").apply { mkdirs() }
         engine = TorrentEngine(dir).also { it.start() }
-        startForeground(NOTIF_ID, notification("Download service running"))
+        startForeground(
+            TorrentNotifications.SUMMARY_ID,
+            TorrentNotifications.summary(this, emptyList()),
+        )
 
         // libtorrent has no push for status, so poll the snapshot the UI
         // observes. Deliberately NOT on the main looper: every entry crosses
@@ -41,7 +44,7 @@ class TorrentService : Service() {
                 {
                     runCatching {
                         engine.refresh()
-                        updateNotification()
+                        publishNotifications()
                     }
                 },
                 1, 1, java.util.concurrent.TimeUnit.SECONDS,
@@ -56,6 +59,16 @@ class TorrentService : Service() {
     fun stream(id: String) = engine.setStreaming(id)
 
     override fun onStartCommand(intent: Intent?, flags: Int, startId: Int): Int {
+        val id = intent?.getStringExtra(TorrentNotifications.EXTRA_ID)
+        if (id != null) {
+            when (intent.action) {
+                TorrentNotifications.ACTION_PAUSE -> engine.pause(id)
+                TorrentNotifications.ACTION_RESUME -> engine.resume(id)
+                TorrentNotifications.ACTION_REMOVE -> engine.remove(id, deleteFiles = false)
+            }
+            engine.refresh()
+            publishNotifications()
+        }
         // Downloads should survive the process being reclaimed.
         return START_STICKY
     }
@@ -71,29 +84,17 @@ class TorrentService : Service() {
         super.onDestroy()
     }
 
-    /** Reflects live download progress in the ongoing notification. */
-    private fun updateNotification() {
-        val (count, pct) = engine.overallProgress()
-        val text = when {
-            count == 0 -> "No active downloads"
-            count == 1 -> "Downloading · $pct%"
-            else -> "$count downloads · $pct%"
-        }
+    /** Per-torrent notifications, in the shape LibreTorrent uses. */
+    private fun publishNotifications() {
+        val items = engine.items.value
+        val nm = getSystemService(NotificationManager::class.java) ?: return
         runCatching {
-            val nm = getSystemService(NotificationManager::class.java)
-            nm?.notify(NOTIF_ID, notification(text, if (count > 0) pct else null))
+            nm.notify(TorrentNotifications.SUMMARY_ID, TorrentNotifications.summary(this, items))
+            TorrentNotifications.publish(this, items, publishedIds)
         }
     }
 
-    private fun notification(text: String, progress: Int? = null) =
-        NotificationCompat.Builder(this, OpenReelApp.CHANNEL_TORRENT)
-            .setContentTitle("OpenReel")
-            .setContentText(text)
-            .setSmallIcon(android.R.drawable.stat_sys_download)
-            .setOngoing(true)
-            .setOnlyAlertOnce(true)
-            .apply { progress?.let { setProgress(100, it, false) } }
-            .build()
+    /** Notification ids we have published, so stale ones can be cleared. */
+    private val publishedIds = mutableSetOf<Int>()
 
-    private companion object { const val NOTIF_ID = 42 }
 }

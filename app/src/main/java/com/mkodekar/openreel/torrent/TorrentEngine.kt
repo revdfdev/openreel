@@ -38,6 +38,7 @@ class TorrentEngine(private val downloadDir: File) {
         val uploadRate: Int,
         val peers: Int,
         val totalBytes: Long,
+        val doneBytes: Long,
         val paused: Boolean,
         val finished: Boolean,
         val hasMetadata: Boolean,
@@ -225,12 +226,15 @@ class TorrentEngine(private val downloadDir: File) {
                 val ti = runCatching { h.torrentFile() }.getOrNull()
                 Item(
                     id = id,
-                    name = st.name()?.takeIf { it.isNotBlank() } ?: "Fetching metadata…",
+                    name = st.name()?.takeIf { it.isNotBlank() }
+                        ?: ti?.name()?.takeIf { it.isNotBlank() }
+                        ?: "Fetching metadata…",
                     progress = st.progress(),
                     downloadRate = st.downloadPayloadRate(),
                     uploadRate = st.uploadPayloadRate(),
                     peers = st.numPeers(),
                     totalBytes = ti?.totalSize() ?: 0L,
+                    doneBytes = st.totalDone(),
                     paused = id in pausedSnapshot,
                     finished = st.isFinished,
                     hasMetadata = ti != null,

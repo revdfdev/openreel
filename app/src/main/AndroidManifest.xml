@@ -245,6 +245,17 @@
             android:exported="false"
             android:foregroundServiceType="dataSync" />
 
+        <!--
+          ZXing declares CaptureActivity with screenOrientation="sensorLandscape",
+          so the scanner always opened sideways regardless of how the phone was
+          held. Override it to follow the device.
+        -->
+        <activity
+            android:name="com.journeyapps.barcodescanner.CaptureActivity"
+            android:screenOrientation="fullUser"
+            android:stateNotNeeded="true"
+            tools:replace="android:screenOrientation" />
+
         <provider
             android:name="androidx.core.content.FileProvider"
             android:authorities="${applicationId}.fileprovider"
