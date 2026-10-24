@@ -26,6 +26,7 @@ import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
 import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
+import androidx.compose.ui.graphics.drawscope.Stroke
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
 import androidx.compose.ui.text.style.TextOverflow
@@ -727,6 +728,55 @@ private fun RefreshArc(progress: Float, spinning: Boolean) {
             useCenter = false,
             style = stroke,
         )
+    }
+}
+
+/**
+ * The Indian flag, drawn rather than shipped as an asset: saffron #FF9933,
+ * white, India green #138808, with the Ashoka Chakra in navy #000080 and its
+ * 24 spokes.
+ */
+@Composable
+fun IndianFlag(width: Dp = 24.dp) {
+    // The flag's official ratio is 3:2.
+    val height = width * 2f / 3f
+    androidx.compose.foundation.Canvas(
+        Modifier
+            .size(width, height)
+            .clip(RoundedCornerShape(1.dp))
+    ) {
+        val w = size.width
+        val h = size.height
+        val band = h / 3f
+        drawRect(Color(0xFFFF9933), size = androidx.compose.ui.geometry.Size(w, band))
+        drawRect(
+            Color.White,
+            topLeft = androidx.compose.ui.geometry.Offset(0f, band),
+            size = androidx.compose.ui.geometry.Size(w, band),
+        )
+        drawRect(
+            Color(0xFF138808),
+            topLeft = androidx.compose.ui.geometry.Offset(0f, band * 2),
+            size = androidx.compose.ui.geometry.Size(w, band),
+        )
+        // Chakra: diameter is three quarters of the white band.
+        val navy = Color(0xFF000080)
+        val c = androidx.compose.ui.geometry.Offset(w / 2f, h / 2f)
+        val r = band * 0.375f
+        drawCircle(navy, radius = r, center = c, style = Stroke(width = h * 0.018f))
+        drawCircle(navy, radius = r * 0.12f, center = c)
+        repeat(24) { i ->
+            val a = (i * 15f) * (Math.PI / 180f).toFloat()
+            drawLine(
+                color = navy,
+                start = c,
+                end = androidx.compose.ui.geometry.Offset(
+                    c.x + r * kotlin.math.cos(a),
+                    c.y + r * kotlin.math.sin(a),
+                ),
+                strokeWidth = h * 0.012f,
+            )
+        }
     }
 }
 

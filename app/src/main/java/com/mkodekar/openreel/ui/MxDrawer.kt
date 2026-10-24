@@ -197,6 +197,20 @@ private fun DrawerContent(
         DrawerRow("Share files", selected = false, onClick = onShare)
         DrawerRow("Private Folder", selected = false, onClick = onVault)
         DrawerRow("Settings", selected = false, onClick = onSettings)
+
+        Spacer(Modifier.height(18.dp))
+        Row(
+            Modifier.fillMaxWidth().padding(start = 20.dp, bottom = 20.dp),
+            verticalAlignment = Alignment.CenterVertically,
+        ) {
+            IndianFlag(width = 20.dp)
+            Spacer(Modifier.width(8.dp))
+            MxText(
+                "Made in India by Rehan Kodekar",
+                Mx.type.secondary,
+                Mx.colors.textSecondary,
+            )
+        }
     }
 }
 

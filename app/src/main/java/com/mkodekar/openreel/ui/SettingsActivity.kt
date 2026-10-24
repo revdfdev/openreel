@@ -81,6 +81,9 @@ class SettingsActivity : ComponentActivity() {
                             s.subtitleFontScale = it
                         }
 
+                        MxSectionLabel("About")
+                        AboutRow()
+
                         MxSectionLabel("General")
                         // recreate() so the new theme applies at once rather
                         // than on the next launch.
@@ -90,6 +93,27 @@ class SettingsActivity : ComponentActivity() {
                 }
             }
         }
+    }
+
+    /** Attribution, with the flag drawn in Canvas rather than shipped. */
+    @Composable
+    private fun AboutRow() {
+        Column(Modifier.fillMaxWidth().padding(vertical = 13.dp)) {
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                IndianFlag(width = 26.dp)
+                Spacer(Modifier.width(10.dp))
+                Column {
+                    MxText("Made in India by Rehan Kodekar", Mx.type.primary)
+                    Spacer(Modifier.height(2.dp))
+                    MxText(
+                        "OpenReel · free and open source",
+                        Mx.type.secondary,
+                        Mx.colors.textSecondary,
+                    )
+                }
+            }
+        }
+        MxDivider()
     }
 
     @Composable
