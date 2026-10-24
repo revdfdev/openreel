@@ -55,6 +55,7 @@ fun MxDrawerScaffold(
     onOpenChange: (Boolean) -> Unit,
     onSection: (Section) -> Unit,
     onShare: () -> Unit,
+    onVault: () -> Unit,
     onSettings: () -> Unit,
     content: @Composable () -> Unit,
 ) {
@@ -146,6 +147,7 @@ fun MxDrawerScaffold(
                     section = section,
                     onSection = { onSection(it); onOpenChange(false) },
                     onShare = { onShare(); onOpenChange(false) },
+                    onVault = { onVault(); onOpenChange(false) },
                     onSettings = { onSettings(); onOpenChange(false) },
                 )
             }
@@ -158,6 +160,7 @@ private fun DrawerContent(
     section: Section,
     onSection: (Section) -> Unit,
     onShare: () -> Unit,
+    onVault: () -> Unit,
     onSettings: () -> Unit,
 ) {
     Column(
@@ -192,6 +195,7 @@ private fun DrawerContent(
         Spacer(Modifier.height(8.dp))
 
         DrawerRow("Share files", selected = false, onClick = onShare)
+        DrawerRow("Private Folder", selected = false, onClick = onVault)
         DrawerRow("Settings", selected = false, onClick = onSettings)
     }
 }

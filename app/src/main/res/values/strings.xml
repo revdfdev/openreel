@@ -12,4 +12,5 @@
     <string name="shortcut_share_long">Send files over Wi-Fi Direct</string>
     <string name="shortcut_torrent_short">Torrent</string>
     <string name="shortcut_torrent_long">Download a torrent</string>
+    <string name="vault_title">Private Folder</string>
 </resources>

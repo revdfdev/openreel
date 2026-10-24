@@ -86,6 +86,14 @@ class MainActivity : ComponentActivity() {
                     onShare = {
                         startActivity(Intent(this@MainActivity, ShareActivity::class.java))
                     },
+                    onVault = {
+                        startActivity(
+                            Intent(
+                                this@MainActivity,
+                                com.mkodekar.openreel.vault.VaultActivity::class.java,
+                            )
+                        )
+                    },
                     onSettings = {
                         startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
                     },

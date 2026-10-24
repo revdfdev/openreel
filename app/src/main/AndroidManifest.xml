@@ -202,6 +202,14 @@
             </intent-filter>
         </activity>
 
+        <!-- Private Folder. excludeFromRecents + FLAG_SECURE in code keep its
+             contents out of the recents thumbnail. -->
+        <activity
+            android:name=".vault.VaultActivity"
+            android:exported="false"
+            android:excludeFromRecents="true"
+            android:label="@string/vault_title" />
+
         <activity
             android:name=".ui.SettingsActivity"
             android:exported="false"
