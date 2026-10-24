@@ -19,6 +19,7 @@ import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.alpha
 import androidx.compose.ui.draw.clip
+import androidx.compose.ui.focus.focusRequester
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.text.TextStyle
 import androidx.compose.ui.text.style.TextAlign
@@ -362,6 +363,70 @@ fun MxSearchGlyph() {
             end = androidx.compose.ui.geometry.Offset(w * 0.92f, w * 0.92f),
             strokeWidth = w * 0.11f,
             cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+    }
+}
+
+/**
+ * Toolbar in search mode: back arrow, an inline field that takes focus
+ * immediately, and a clear/close action. Replaces the title row rather than
+ * sitting under it, which is how MX does it.
+ */
+@Composable
+fun MxSearchBar(
+    value: String,
+    onValueChange: (String) -> Unit,
+    onClose: () -> Unit,
+) {
+    val focus = remember { androidx.compose.ui.focus.FocusRequester() }
+    LaunchedEffect(Unit) { runCatching { focus.requestFocus() } }
+
+    Row(
+        Modifier
+            .fillMaxWidth()
+            .background(Mx.colors.toolbar)
+            .height(56.dp)
+            .padding(horizontal = 6.dp),
+        verticalAlignment = Alignment.CenterVertically,
+    ) {
+        MxIconButton(onClick = onClose) { MxChevron() }
+        Box(Modifier.weight(1f).padding(horizontal = 4.dp)) {
+            if (value.isEmpty()) {
+                MxText("Search videos", Mx.type.primary, Mx.colors.textSecondary, maxLines = 1)
+            }
+            androidx.compose.foundation.text.BasicTextField(
+                value = value,
+                onValueChange = onValueChange,
+                singleLine = true,
+                textStyle = Mx.type.primary.copy(color = Mx.colors.textPrimary),
+                cursorBrush = androidx.compose.ui.graphics.SolidColor(Mx.colors.accent),
+                modifier = Modifier
+                    .fillMaxWidth()
+                    .focusRequester(focus),
+            )
+        }
+        if (value.isNotEmpty()) {
+            MxIconButton(onClick = { onValueChange("") }) { MxCloseGlyph() }
+        }
+    }
+}
+
+/** Small x, for clearing the search field. */
+@Composable
+fun MxCloseGlyph() {
+    val c = Mx.colors.textSecondary
+    androidx.compose.foundation.Canvas(Modifier.size(15.dp)) {
+        val w = size.width
+        val stroke = w * 0.13f
+        drawLine(
+            c, androidx.compose.ui.geometry.Offset(w * 0.15f, w * 0.15f),
+            androidx.compose.ui.geometry.Offset(w * 0.85f, w * 0.85f),
+            strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+        drawLine(
+            c, androidx.compose.ui.geometry.Offset(w * 0.85f, w * 0.15f),
+            androidx.compose.ui.geometry.Offset(w * 0.15f, w * 0.85f),
+            strokeWidth = stroke, cap = androidx.compose.ui.graphics.StrokeCap.Round,
         )
     }
 }

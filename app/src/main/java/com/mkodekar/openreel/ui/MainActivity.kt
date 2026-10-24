@@ -55,6 +55,16 @@ class MainActivity : ComponentActivity() {
             MxTheme(dark = rememberThemeIsDark(themePref)) {
                 var section by remember { mutableStateOf(Section.VIDEOS) }
                 var drawerOpen by remember { mutableStateOf(false) }
+                // null = not searching; "" = search open but empty.
+                var search by remember { mutableStateOf<String?>(null) }
+
+                // Back should dismiss the drawer, then search, before leaving.
+                androidx.activity.compose.BackHandler(enabled = drawerOpen || search != null) {
+                    when {
+                        drawerOpen -> drawerOpen = false
+                        search != null -> search = null
+                    }
+                }
 
                 MxDrawerScaffold(
                     open = drawerOpen,
@@ -75,16 +85,25 @@ class MainActivity : ComponentActivity() {
                     ) {
                         // MX tints the status strip separately from the toolbar.
                         MxStatusBarScrim()
-                        MxToolbar(
-                            title = section.title,
-                            onMenu = { drawerOpen = true },
-                        ) {
-                            MxIconButton(onClick = { /* search: not implemented yet */ }) {
-                                MxSearchGlyph()
+                        val query = search
+                        if (query != null && section == Section.VIDEOS) {
+                            MxSearchBar(
+                                value = query,
+                                onValueChange = { search = it },
+                                onClose = { search = null },
+                            )
+                        } else {
+                            MxToolbar(
+                                title = section.title,
+                                onMenu = { drawerOpen = true },
+                            ) {
+                                if (section == Section.VIDEOS) {
+                                    MxIconButton(onClick = { search = "" }) { MxSearchGlyph() }
+                                }
                             }
                         }
                         when (section) {
-                            Section.VIDEOS -> VideosTab(repo, prefs)
+                            Section.VIDEOS -> VideosTab(repo, prefs, query)
                             Section.NETWORK -> NetworkTab()
                             Section.TORRENT -> TorrentScreen { open(it) }
                         }
@@ -97,7 +116,7 @@ class MainActivity : ComponentActivity() {
     // --- Videos --------------------------------------------------------------
 
     @Composable
-    private fun VideosTab(repo: MediaRepository, prefs: BrowsePrefs) {
+    private fun VideosTab(repo: MediaRepository, prefs: BrowsePrefs, query: String?) {
         var videos by remember { mutableStateOf(emptyList<VideoItem>()) }
         var granted by remember { mutableStateOf(hasMediaPermission()) }
         var viewMode by remember { mutableStateOf(prefs.viewMode) }
@@ -135,7 +154,14 @@ class MainActivity : ComponentActivity() {
         }
 
         val sorted = remember(videos, sort) { videos.sortedWith(sort.comparator()) }
-        val inFolder = openFolder
+        // Searching shows matching files flat, ignoring the folder drill-down:
+        // you are looking for a file, not a place.
+        val searching = !query.isNullOrBlank()
+        val results = remember(sorted, query) {
+            if (!searching) sorted
+            else sorted.filter { it.title.contains(query!!.trim(), ignoreCase = true) }
+        }
+        val inFolder = if (searching) null else openFolder
 
         Column(Modifier.fillMaxSize()) {
             // MX's header strip above the list: where you are + the live sort.
@@ -151,8 +177,13 @@ class MainActivity : ComponentActivity() {
                 }
                 Column(Modifier.weight(1f).padding(start = if (inFolder != null) 2.dp else 0.dp)) {
                     MxText(
-                        inFolder?.substringAfterLast('/')?.ifBlank { "Internal storage" }
-                            ?: if (viewMode == ViewMode.FOLDERS) "Folders" else "All videos",
+                        when {
+                            searching -> "${results.size} result(s)"
+                            inFolder != null ->
+                                inFolder.substringAfterLast('/').ifBlank { "Internal storage" }
+                            viewMode == ViewMode.FOLDERS -> "Folders"
+                            else -> "All videos"
+                        },
                         Mx.type.mediumPrimary,
                         maxLines = 1,
                     )
@@ -168,9 +199,10 @@ class MainActivity : ComponentActivity() {
             MxDivider()
 
             when {
+                searching && results.isEmpty() -> Centered("Nothing matches \"${query!!.trim()}\".")
                 sorted.isEmpty() -> Centered("No videos found.")
 
-                viewMode == ViewMode.FOLDERS && inFolder == null -> {
+                !searching && viewMode == ViewMode.FOLDERS && inFolder == null -> {
                     val folders = remember(sorted) {
                         sorted.groupBy { it.folderPath }
                             .toList()
@@ -188,7 +220,11 @@ class MainActivity : ComponentActivity() {
                 }
 
                 else -> MediaCollection(
-                    items = if (inFolder != null) sorted.filter { it.folderPath == inFolder } else sorted,
+                    items = when {
+                        searching -> results
+                        inFolder != null -> sorted.filter { it.folderPath == inFolder }
+                        else -> sorted
+                    },
                     layout = layout,
                     onOpen = { open(it.uri.toString()) },
                     onOverflow = { open(it.uri.toString()) },
