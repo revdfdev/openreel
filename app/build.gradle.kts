@@ -65,7 +65,10 @@ dependencies {
     implementation(libs.androidx.ui)
     implementation(libs.androidx.ui.graphics)
     implementation(libs.androidx.ui.tooling.preview)
-    implementation(libs.androidx.material3)
+    // Compose foundation + animation directly: the UI is hand-drawn to match MX,
+    // so Material3 is deliberately not a dependency.
+    implementation(libs.androidx.foundation)
+    implementation(libs.androidx.animation)
     implementation(libs.androidx.documentfile)
     implementation(libs.kotlinx.coroutines.android)
 

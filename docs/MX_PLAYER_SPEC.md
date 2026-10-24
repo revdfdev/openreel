@@ -60,7 +60,48 @@ tint matches; unselected uses `mxskin__options_menu_sort_layout_unselected`.
 - **Layout** — Grid | List
 - **Sort** — the field+direction table above
 
-## 5. Key layouts to mirror
+## 5. Typography (styles.xml, NewText.*)
+
+MX's UI typeface is **Muli** (`@font/font_muli`, `@font/font_muli_semibold`).
+We bundle muli_regular/semibold/bold -- SIL OFL, see docs/FONT_LICENSE.md.
+
+| Style | Size | Weight | Used for |
+|-------|------|--------|----------|
+| `NewText.Primary` | 15sp | Muli regular | folder title |
+| `NewText.Medium.Primary` | 14sp | Muli SemiBold | file / video title |
+| `NewText.Secondary` | 12sp | Muli regular | counts, paths, info lines |
+| `NewText.Medium.Tag` | 10sp | Muli SemiBold, +0.05 tracking, white | duration / NEW badges |
+
+## 6. Row + cell geometry (exact, from the layout XML)
+
+### list_row_media.xml -- video row (List layout)
+- root `minHeight` 54sp; content padding left 14dp, top/bottom 8dp
+- thumbnail **96x56dp** in a CardView, `cardCornerRadius` 4dp, elevation 2dp,
+  `scaleType=centerCrop`; centred placeholder glyph 32dp
+- duration badge bottom-right, 4dp margin, `round_box_small`, tint `tag_dark`
+- "NEW" badge top-left, 4dp margin, tint `tag_red`
+- text block starts 8dp after the card; title 14sp max **3** lines,
+  `lineSpacingExtra` 4dp, then 2dp gap, then the secondary info line
+- overflow button 40x38dp, padding top/bottom 10dp, right 22dp
+
+### list_row_listable.xml -- folder row (Folders view)
+- folder icon `@dimen/directory_width` = **62dp**, 16dp left margin
+- text block inset 16dp both sides; title 15sp max 2 lines, 2dp bottom margin
+- count line below; optional rounded tag 4dp to its right
+- path line below that, 2dp top margin, single line
+
+### list_grid_media.xml -- grid cell (Grid layout)
+- root padding top/bottom 4dp
+- card `layout_constraintDimensionRatio` **1:0.564** (16:9), 4dp corners,
+  2dp elevation, `cardUseCompatPadding`
+- centred placeholder glyph **40dp** (larger than the list's 32dp)
+- title 4dp below the card, right inset 18dp, `maxLines=2` **and
+  `minLines=2`** so every cell is the same height, `lineSpacingExtra` 4dp
+- overflow 38x28dp pinned top-right of the title
+
+Badges use `round_box_small` = 2dp corner radius.
+
+## 7. Key layouts to mirror
 
 `activity_folder`, `list_grid_media`, `list_grid_listable`,
 `layout_options_menu_view_list_item`, `layout_options_menu_fields_list_item`,
