@@ -10,7 +10,7 @@ android {
 
     defaultConfig {
         applicationId = "com.mkodekar.openreel"
-        minSdk = 21
+        minSdk = 26   // libmpv AAR requires API 26+
         targetSdk = 35
         versionCode = 1
         versionName = "0.1.0"
@@ -44,11 +44,17 @@ android {
     kotlinOptions { jvmTarget = "17" }
     buildFeatures { compose = true }
 
-    // NOTE: libmpv is NOT on Maven. Its prebuilt .so files and MPVLib bindings
-    // are added manually -- see README "Wiring libmpv". They live in:
-    //   app/src/main/jniLibs/<abi>/libmpv.so (+ libavcodec, etc.)
-    //   app/src/main/java/is/xyz/mpv/MPVLib.java  (JNI binding, LGPL, copied in)
-    sourceSets["main"].jniLibs.srcDirs("src/main/jniLibs")
+    // libmpv ships as a prebuilt AAR (dev.jdtech.mpv:libmpv) carrying
+    // libmpv.so + the FFmpeg family for all four ABIs, so no NDK build and no
+    // hand-copied jniLibs are needed. Both libmpv and libtorrent4j bundle
+    // libc++_shared.so, so take the first to avoid a duplicate-file failure.
+    packaging {
+        jniLibs {
+            useLegacyPackaging = false
+            pickFirsts += "**/libc++_shared.so"
+        }
+        resources.excludes += setOf("META-INF/AL2.0", "META-INF/LGPL2.1")
+    }
 }
 
 dependencies {
@@ -62,6 +68,9 @@ dependencies {
     implementation(libs.androidx.material3)
     implementation(libs.androidx.documentfile)
     implementation(libs.kotlinx.coroutines.android)
+
+    // --- Playback engine: libmpv = FFmpeg + libass (module 1) ---
+    implementation(libs.libmpv)
 
     // --- Torrent (module 3) ---
     implementation(libs.libtorrent4j)

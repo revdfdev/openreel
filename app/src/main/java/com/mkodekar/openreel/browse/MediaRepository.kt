@@ -13,7 +13,17 @@ data class VideoItem(
     val durationMs: Long,
     val sizeBytes: Long,
     val relativePath: String,
-)
+    /** Seconds since epoch (MediaStore DATE_MODIFIED) -- MX sorts Date on this. */
+    val dateModified: Long = 0L,
+    val width: Int = 0,
+    val height: Int = 0,
+) {
+    /** Folder this video lives in, used by the Folders view and Location sort. */
+    val folderPath: String get() = relativePath.trimEnd('/')
+
+    /** e.g. "1920x1080"; blank when MediaStore has no resolution for the file. */
+    val resolutionLabel: String get() = if (width > 0 && height > 0) "${width}x$height" else ""
+}
 
 /**
  * Lists local videos through MediaStore (scoped storage -- no MANAGE_EXTERNAL_STORAGE).
@@ -29,6 +39,9 @@ class MediaRepository(private val context: Context) {
             MediaStore.Video.Media.DURATION,
             MediaStore.Video.Media.SIZE,
             MediaStore.Video.Media.RELATIVE_PATH,
+            MediaStore.Video.Media.DATE_MODIFIED,
+            MediaStore.Video.Media.WIDTH,
+            MediaStore.Video.Media.HEIGHT,
         )
         val sort = "${MediaStore.Video.Media.DATE_ADDED} DESC"
         val out = ArrayList<VideoItem>()
@@ -39,6 +52,9 @@ class MediaRepository(private val context: Context) {
             val durCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DURATION)
             val sizeCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.SIZE)
             val pathCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.RELATIVE_PATH)
+            val dateCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.DATE_MODIFIED)
+            val wCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.WIDTH)
+            val hCol = c.getColumnIndexOrThrow(MediaStore.Video.Media.HEIGHT)
             while (c.moveToNext()) {
                 val id = c.getLong(idCol)
                 out += VideoItem(
@@ -48,6 +64,9 @@ class MediaRepository(private val context: Context) {
                     durationMs = c.getLong(durCol),
                     sizeBytes = c.getLong(sizeCol),
                     relativePath = c.getString(pathCol) ?: "",
+                    dateModified = c.getLong(dateCol),
+                    width = c.getInt(wCol),
+                    height = c.getInt(hCol),
                 )
             }
         }
@@ -56,5 +75,5 @@ class MediaRepository(private val context: Context) {
 
     /** Group by containing folder, like MX Player's folder view. */
     fun queryFolders(): Map<String, List<VideoItem>> =
-        queryVideos().groupBy { it.relativePath.trimEnd('/') }
+        queryVideos().groupBy { it.folderPath }
 }

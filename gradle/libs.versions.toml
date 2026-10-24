@@ -15,6 +15,8 @@ nanohttpd = "2.3.1"
 # QR scan/generate for share pairing -- FOSS, Apache-2.0
 zxingEmbedded = "4.3.0"
 zxingCore = "3.5.3"
+# libmpv (FFmpeg + libass) -- MX Player uses the same stack natively
+libmpv = "0.5.1"   # 1.0.0 needs compileSdk 36 + has a different (instance) API
 
 [libraries]
 androidx-core-ktx = { group = "androidx.core", name = "core-ktx", version.ref = "coreKtx" }
@@ -32,6 +34,8 @@ libtorrent4j = { group = "org.libtorrent4j", name = "libtorrent4j", version.ref 
 libtorrent4jArm64 = { group = "org.libtorrent4j", name = "libtorrent4j-android-arm64", version.ref = "libtorrent4j" }
 libtorrent4jArm = { group = "org.libtorrent4j", name = "libtorrent4j-android-arm", version.ref = "libtorrent4j" }
 libtorrent4jX64 = { group = "org.libtorrent4j", name = "libtorrent4j-android-x86_64", version.ref = "libtorrent4j" }
+
+libmpv = { group = "dev.jdtech.mpv", name = "libmpv", version.ref = "libmpv" }
 
 nanohttpd = { group = "org.nanohttpd", name = "nanohttpd", version.ref = "nanohttpd" }
 zxing-embedded = { group = "com.journeyapps", name = "zxing-android-embedded", version.ref = "zxingEmbedded" }

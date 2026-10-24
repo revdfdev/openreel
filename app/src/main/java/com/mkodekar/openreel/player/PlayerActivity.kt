@@ -66,8 +66,8 @@ class PlayerActivity : ComponentActivity() {
 
         surface = SurfaceView(this)
         mpv = MpvCore(this).apply {
+            init()                 // create the engine BEFORE the surface callback can fire
             attach(surface)
-            init()
             setHardwareDecoding(settings.hardwareDecoding)
         }
         controls = PlayerControls(this, mpv, onTracks = { showTrackMenu() }, onOptions = { showOptionsMenu() })
