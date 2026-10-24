@@ -13,6 +13,7 @@ import androidx.compose.animation.slideInVertically
 import androidx.compose.animation.slideOutVertically
 import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
+import androidx.compose.foundation.gestures.detectDragGestures
 import androidx.compose.foundation.gestures.detectHorizontalDragGestures
 import androidx.compose.foundation.gestures.detectTapGestures
 import androidx.compose.foundation.layout.*
@@ -26,6 +27,7 @@ import androidx.compose.ui.graphics.Brush
 import androidx.compose.ui.graphics.Color
 import androidx.compose.ui.input.pointer.pointerInput
 import androidx.compose.ui.layout.onSizeChanged
+import kotlin.math.abs
 import androidx.compose.ui.unit.dp
 import com.mkodekar.openreel.ui.*
 import kotlinx.coroutines.delay
@@ -76,10 +78,22 @@ fun PlayerOverlay(
     onOptions: () -> Unit,
     onZoom: () -> Unit,
     seekStepSeconds: Int,
+    /** Horizontal drag, in pixels; positive is rightward (seek forward). */
+    onHorizontalDrag: (Float) -> Unit,
+    /**
+     * Vertical drag. [up] is pixels moved upward (positive = up, matching
+     * "swipe up to increase"), and [leftHalf] picks brightness over volume.
+     */
+    onVerticalDrag: (up: Float, leftHalf: Boolean) -> Unit,
+    onDragEnd: () -> Unit,
 ) {
     var visible by remember { mutableStateOf(true) }
     var interactionTick by remember { mutableIntStateOf(0) }
     var scrubbing by remember { mutableStateOf(false) }
+    // True while a brightness/volume/seek drag is in flight. The chrome hides
+    // for the duration: it sat on top of the HUD, and its buttons swallowed
+    // drags that happened to start on one.
+    var dragging by remember { mutableStateOf(false) }
     var scrubFraction by remember { mutableFloatStateOf(0f) }
 
     fun poke() { visible = true; interactionTick++ }
@@ -92,14 +106,52 @@ fun PlayerOverlay(
     }
 
     MxTheme(dark = true) {
+        var surfaceSize by remember { mutableStateOf(androidx.compose.ui.unit.IntSize.Zero) }
+
         Box(
             Modifier
                 .fillMaxSize()
+                .onSizeChanged { surfaceSize = it }
                 .pointerInput(locked) {
                     detectTapGestures(
                         onTap = { if (!locked) { if (visible) visible = false else poke() } },
                         onDoubleTap = { if (!locked) { onTogglePause(); poke() } },
                     )
+                }
+                // MX's drag gestures. These have to live here rather than on
+                // the SurfaceView underneath: this overlay covers it and
+                // consumes the touches, so a GestureDetector on the surface
+                // never saw them at all.
+                .pointerInput(locked) {
+                    if (locked) return@pointerInput
+                    var horizontal = false
+                    var decided = false
+                    var startX = 0f
+                    detectDragGestures(
+                        onDragStart = { o ->
+                            startX = o.x; decided = false; horizontal = false
+                            dragging = true
+                        },
+                        onDragEnd = { dragging = false; onDragEnd() },
+                        onDragCancel = { dragging = false; onDragEnd() },
+                    ) { change, drag ->
+                        change.consume()
+                        // Lock the axis on the first meaningful movement so a
+                        // seek does not drift into a volume change.
+                        if (!decided && (abs(drag.x) > 1f || abs(drag.y) > 1f)) {
+                            horizontal = abs(drag.x) > abs(drag.y)
+                            decided = true
+                        }
+                        if (!decided) return@detectDragGestures
+                        if (horizontal) {
+                            onHorizontalDrag(drag.x)
+                        } else {
+                            // Compose reports downward as positive; invert so
+                            // callers get "pixels moved up".
+                            onVerticalDrag(-drag.y, startX < surfaceSize.width / 2f)
+                        }
+                        poke()
+                    }
                 }
         ) {
             // --- buffering spinner (independent of the bars) ---
@@ -108,9 +160,6 @@ fun PlayerOverlay(
                     BufferingSpinner(bufferPercent)
                 }
             }
-
-            // --- gesture HUD (independent of the bars) ---
-            HudLayer(hud)
 
             if (locked) {
                 // Locked: only a single unlock affordance, as MX does.
@@ -126,7 +175,7 @@ fun PlayerOverlay(
 
             // --- top bar ---
             AnimatedVisibility(
-                visible = visible,
+                visible = visible && !dragging,
                 modifier = Modifier.align(Alignment.TopCenter),
                 enter = slideInVertically(tween(180)) { -it } + fadeIn(tween(180)),
                 exit = slideOutVertically(tween(150)) { -it } + fadeOut(tween(150)),
@@ -162,7 +211,7 @@ fun PlayerOverlay(
             // Hidden while buffering: the spinner occupies the same centre
             // spot, and drawing both puts the ring behind the play button.
             AnimatedVisibility(
-                visible = visible && !buffering,
+                visible = visible && !buffering && !dragging,
                 modifier = Modifier.align(Alignment.Center),
                 enter = fadeIn(tween(180)),
                 exit = fadeOut(tween(150)),
@@ -185,7 +234,7 @@ fun PlayerOverlay(
 
             // --- bottom bar ---
             AnimatedVisibility(
-                visible = visible,
+                visible = visible && !dragging,
                 modifier = Modifier.align(Alignment.BottomCenter),
                 enter = slideInVertically(tween(180)) { it } + fadeIn(tween(180)),
                 exit = slideOutVertically(tween(150)) { it } + fadeOut(tween(150)),
@@ -248,6 +297,10 @@ fun PlayerOverlay(
                     }
                 }
             }
+
+            // Drawn last so it sits above the bars; previously it rendered
+            // before them and the controls covered it.
+            HudLayer(hud)
         }
     }
 }
@@ -361,12 +414,16 @@ private fun BufferingSpinner(percent: Int) {
 
 @Composable
 private fun BoxScope.HudLayer(hud: Hud?) {
+    // Fill the parent and centre inside, rather than aligning the
+    // AnimatedVisibility itself: aligning the container left the HUD pinned
+    // to the left edge and clipped.
     AnimatedVisibility(
         visible = hud != null,
-        modifier = Modifier.align(Alignment.Center),
+        modifier = Modifier.matchParentSize(),
         enter = fadeIn(tween(90)),
         exit = fadeOut(tween(220)),
     ) {
+      Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
         Box(
             Modifier
                 .clip(RoundedCornerShape(8.dp))
@@ -390,6 +447,7 @@ private fun BoxScope.HudLayer(hud: Hud?) {
                 null -> Unit
             }
         }
+      }
     }
 }
 

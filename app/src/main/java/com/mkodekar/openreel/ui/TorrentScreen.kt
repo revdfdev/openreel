@@ -48,7 +48,15 @@ import java.io.File
  * under scoped storage without asking for broad storage permissions.
  */
 
-/** Remembers the destination folder the user picked. */
+/** One finished download, kept so you can see what you got and where. */
+data class CompletedDownload(
+    val name: String,
+    val sizeBytes: Long,
+    val savedTo: String,
+    val at: Long,
+)
+
+/** Remembers the destination folder and the history of finished downloads. */
 class TorrentPrefs(context: Context) {
     private val prefs = context.getSharedPreferences("torrent", Context.MODE_PRIVATE)
 
@@ -56,7 +64,41 @@ class TorrentPrefs(context: Context) {
         get() = prefs.getString(KEY_DEST, null)?.let(Uri::parse)
         set(v) = prefs.edit().putString(KEY_DEST, v?.toString()).apply()
 
-    private companion object { const val KEY_DEST = "destination_tree" }
+    /**
+     * Finished downloads, newest first. Stored as a small tab-separated list
+     * rather than pulling in a JSON dependency for four fields.
+     */
+    var history: List<CompletedDownload>
+        get() = prefs.getStringSet(KEY_HISTORY, emptySet()).orEmpty()
+            .mapNotNull { row ->
+                val p = row.split('	')
+                if (p.size < 4) null
+                else CompletedDownload(
+                    name = p[0],
+                    sizeBytes = p[1].toLongOrNull() ?: 0L,
+                    savedTo = p[2],
+                    at = p[3].toLongOrNull() ?: 0L,
+                )
+            }
+            .sortedByDescending { it.at }
+        set(v) = prefs.edit()
+            .putStringSet(
+                KEY_HISTORY,
+                v.take(50).map { "${it.name}	${it.sizeBytes}	${it.savedTo}	${it.at}" }.toSet(),
+            )
+            .apply()
+
+    fun record(entry: CompletedDownload) {
+        // Keyed by name so re-running a torrent does not duplicate the row.
+        history = (listOf(entry) + history.filterNot { it.name == entry.name })
+    }
+
+    fun clearHistory() = prefs.edit().remove(KEY_HISTORY).apply()
+
+    private companion object {
+        const val KEY_DEST = "destination_tree"
+        const val KEY_HISTORY = "history"
+    }
 }
 
 @Composable
@@ -74,6 +116,7 @@ fun TorrentScreen(
     var destination by remember { mutableStateOf(prefs.destination) }
     var note by remember { mutableStateOf<String?>(null) }
     val exported = remember { mutableStateMapOf<String, Boolean>() }
+    var history by remember { mutableStateOf(prefs.history) }
 
     val items by (service?.engine?.items ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<TorrentEngine.Item>()) })
         .collectAsState()
@@ -113,7 +156,19 @@ fun TorrentScreen(
             exported[item.id] = true
             val files = svc.engine.filesOf(item.id)
             val copied = withContext(Dispatchers.IO) { exportFiles(context, dest, files) }
-            note = if (copied > 0) "Saved ${item.name} to your folder" else null
+            val where = folderLabel(context, dest)
+            if (copied > 0) {
+                prefs.record(
+                    CompletedDownload(
+                        name = item.name,
+                        sizeBytes = item.totalBytes,
+                        savedTo = where,
+                        at = System.currentTimeMillis(),
+                    )
+                )
+                history = prefs.history
+                note = "Saved ${item.name} to $where"
+            }
         }
     }
 
@@ -207,13 +262,15 @@ fun TorrentScreen(
         // into native libtorrent, which is exactly what crashed before.)
 
         Spacer(Modifier.height(6.dp))
-        if (items.isEmpty()) {
+        if (items.isEmpty() && history.isEmpty()) {
             Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
                 MxText("No downloads yet.", Mx.type.primary, Mx.colors.textSecondary)
             }
         } else {
-            MxSectionLabel("Downloads")
             LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                if (items.isNotEmpty()) {
+                    item { MxSectionLabel("Active") }
+                }
                 items(items, key = { it.id }) { item ->
                     DownloadRow(
                         item = item,
@@ -234,6 +291,20 @@ fun TorrentScreen(
                         },
                     )
                 }
+
+                if (history.isNotEmpty()) {
+                    item {
+                        Row(verticalAlignment = Alignment.CenterVertically) {
+                            Box(Modifier.weight(1f)) { MxSectionLabel("Completed") }
+                            MxButton("Clear", filled = false) {
+                                prefs.clearHistory(); history = emptyList()
+                            }
+                        }
+                    }
+                    items(history, key = { it.name + it.at }) { done ->
+                        CompletedRow(done)
+                    }
+                }
             }
         }
 
@@ -247,6 +318,38 @@ fun TorrentScreen(
             Mx.colors.textSecondary,
         )
         Spacer(Modifier.height(12.dp))
+    }
+}
+
+/** A finished download: what it was, how big, and where it ended up. */
+@Composable
+private fun CompletedRow(done: CompletedDownload) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 11.dp)) {
+        MxText(done.name, Mx.type.mediumPrimary, maxLines = 2)
+        Spacer(Modifier.height(3.dp))
+        MxText(
+            listOf(
+                formatBytes(done.sizeBytes).takeIf { done.sizeBytes > 0 },
+                "Saved to ${done.savedTo}",
+                relativeTime(done.at),
+            ).filterNotNull().joinToString("  ·  "),
+            Mx.type.secondary,
+            Mx.colors.textSecondary,
+            maxLines = 2,
+        )
+    }
+    MxDivider()
+}
+
+/** "just now" / "12m ago" / "3h ago" / "2d ago" */
+private fun relativeTime(at: Long): String {
+    if (at <= 0) return ""
+    val s = (System.currentTimeMillis() - at) / 1000
+    return when {
+        s < 60 -> "just now"
+        s < 3600 -> "${s / 60}m ago"
+        s < 86400 -> "${s / 3600}h ago"
+        else -> "${s / 86400}d ago"
     }
 }
 

@@ -53,7 +53,6 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
 
     private lateinit var mpv: MpvCore
     private lateinit var surface: SurfaceView
-    private lateinit var gestures: GestureDetector
     private lateinit var resume: ResumeStore
     private lateinit var settings: Settings
     private lateinit var audio: AudioManager
@@ -129,6 +128,11 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
                     onTracks = { showTrackMenu() },
                     onOptions = { showOptionsMenu() },
                     onZoom = { cycleZoom() },
+                    onHorizontalDrag = { dx -> onSeekDrag(dx) },
+                    onVerticalDrag = { up, leftHalf ->
+                        if (leftHalf) adjustBrightness(up) else adjustVolume(up)
+                    },
+                    onDragEnd = { commitSeek() },
                 )
             }
         }
@@ -139,15 +143,6 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
                 addView(overlay, FrameLayout.LayoutParams(-1, -1))
             }
         )
-
-        gestures = GestureDetector(this, PlayerGestures())
-        surface.setOnTouchListener { _, e ->
-            if (!uiLocked) {
-                gestures.onTouchEvent(e)
-                if (e.actionMasked == MotionEvent.ACTION_UP) commitSeek()
-            }
-            true
-        }
 
         handleUri(incomingUri(intent))
     }
@@ -441,33 +436,16 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
     /** Pending drag-seek, committed when the finger lifts. */
     private var seekAccumMs = 0L
 
-    private inner class PlayerGestures : GestureDetector.SimpleOnGestureListener() {
-
-        override fun onDown(e: MotionEvent): Boolean { seekAccumMs = 0; return true }
-
-        override fun onDoubleTap(e: MotionEvent): Boolean {
-            mpv.togglePause(); return true
-        }
-
-        override fun onScroll(
-            e1: MotionEvent?, e2: MotionEvent, dx: Float, dy: Float,
-        ): Boolean {
-            if (e1 == null) return false
-            val horizontal = abs(e2.x - e1.x) > abs(e2.y - e1.y)
-            when {
-                horizontal -> {
-                    // Accumulate and preview the landing point, as MX does,
-                    // rather than seeking on every pixel of movement.
-                    seekAccumMs += (-dx * 120).toLong()
-                    val target = (uiPosition + seekAccumMs)
-                        .coerceIn(0, uiDuration.coerceAtLeast(0))
-                    showHud(Hud.Seek(target, seekAccumMs), 900)
-                }
-                e1.x < surface.width / 2f -> adjustBrightness(dy)
-                else -> adjustVolume(dy)
-            }
-            return true
-        }
+    /**
+     * Horizontal drag = seek. Accumulate and preview the landing point, as MX
+     * does, and commit once the finger lifts rather than seeking on every
+     * pixel of movement.
+     */
+    private fun onSeekDrag(dxPixels: Float) {
+        if (uiDuration <= 0) return
+        seekAccumMs += (dxPixels * 120).toLong()
+        val target = (uiPosition + seekAccumMs).coerceIn(0, uiDuration)
+        showHud(Hud.Seek(target, seekAccumMs), 900)
     }
 
     private fun commitSeek() {
@@ -476,21 +454,42 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
         seekAccumMs = 0
     }
 
-    private fun adjustBrightness(dy: Float) {
+    /** [up] is pixels moved upward; a full screen height is roughly full range. */
+    private fun adjustBrightness(up: Float) {
         val lp = window.attributes
-        val cur = if (lp.screenBrightness < 0) 0.5f else lp.screenBrightness
-        val next = (cur + dy / 1200f).coerceIn(0.01f, 1f)
+        val cur = if (lp.screenBrightness < 0) currentSystemBrightness() else lp.screenBrightness
+        val next = (cur + up / (surface.height.takeIf { it > 0 } ?: 1920)).coerceIn(0.01f, 1f)
         lp.screenBrightness = next
         window.attributes = lp
         showHud(Hud.Brightness(next))
     }
 
-    private fun adjustVolume(dy: Float) {
+    /** Starting point when the window has not overridden brightness yet. */
+    private fun currentSystemBrightness(): Float = runCatching {
+        android.provider.Settings.System.getInt(
+            contentResolver, android.provider.Settings.System.SCREEN_BRIGHTNESS
+        ) / 255f
+    }.getOrDefault(0.5f)
+
+    /**
+     * Volume accumulates sub-step movement, so a slow drag still moves one
+     * notch at a time instead of jumping on every event.
+     */
+    private var volumeAccum = 0f
+
+    private fun adjustVolume(up: Float) {
         val max = audio.getStreamMaxVolume(AudioManager.STREAM_MUSIC)
+        if (max <= 0) return
+        val height = surface.height.takeIf { it > 0 } ?: 1920
+        volumeAccum += up / height * max
+        val steps = volumeAccum.toInt()
         val cur = audio.getStreamVolume(AudioManager.STREAM_MUSIC)
-        val next = (cur + if (dy > 0) 1 else -1).coerceIn(0, max)
-        audio.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
-        showHud(Hud.Volume(if (max > 0) next.toFloat() / max else 0f))
+        val next = (cur + steps).coerceIn(0, max)
+        if (steps != 0) {
+            volumeAccum -= steps
+            audio.setStreamVolume(AudioManager.STREAM_MUSIC, next, 0)
+        }
+        showHud(Hud.Volume(next.toFloat() / max))
     }
 
     // --- Picture-in-Picture --------------------------------------------------
