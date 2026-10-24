@@ -50,15 +50,20 @@ class MainActivity : ComponentActivity() {
         val prefs = BrowsePrefs(this)
         val settings = com.mkodekar.openreel.settings.Settings(this)
         val themePref = settings.theme
+        // A magnet or .torrent opened from outside belongs in the downloader.
+        val incomingTorrent = incomingTorrent(intent)
 
         setContent {
             MxTheme(dark = rememberThemeIsDark(themePref)) {
                 // Launcher shortcuts open straight into a section.
                 var section by remember {
                     mutableStateOf(
-                        runCatching {
-                            Section.valueOf(intent?.getStringExtra("section").orEmpty())
-                        }.getOrDefault(Section.VIDEOS)
+                        when {
+                            incomingTorrent != null -> Section.TORRENT
+                            else -> runCatching {
+                                Section.valueOf(intent?.getStringExtra("section").orEmpty())
+                            }.getOrDefault(Section.VIDEOS)
+                        }
                     )
                 }
                 var drawerOpen by remember { mutableStateOf(false) }
@@ -112,7 +117,10 @@ class MainActivity : ComponentActivity() {
                         when (section) {
                             Section.VIDEOS -> VideosTab(repo, prefs, query)
                             Section.NETWORK -> NetworkTab()
-                            Section.TORRENT -> TorrentScreen { open(it) }
+                            Section.TORRENT -> TorrentScreen(
+                                pending = incomingTorrent,
+                                onPlay = { open(it) },
+                            )
                         }
                     }
                 }
@@ -285,6 +293,33 @@ class MainActivity : ComponentActivity() {
     private fun open(uri: String) {
         if (uri.isBlank()) return
         startActivity(Intent(this, PlayerActivity::class.java).setData(Uri.parse(uri)))
+    }
+
+    /**
+     * A magnet link or .torrent handed to us from outside. Returns the magnet
+     * itself, or the content/file URI of a torrent file, for the download
+     * manager to pick up.
+     */
+    private fun incomingTorrent(intent: Intent?): String? {
+        if (intent == null) return null
+        val data = intent.dataString
+        if (data != null) {
+            if (data.startsWith("magnet:", true)) return data
+            if (data.endsWith(".torrent", true)) return data
+            if (intent.type == "application/x-bittorrent") return data
+        }
+        if (intent.action == Intent.ACTION_SEND) {
+            if (intent.type == "application/x-bittorrent") {
+                androidx.core.content.IntentCompat.getParcelableExtra(
+                    intent, Intent.EXTRA_STREAM, Uri::class.java
+                )?.let { return it.toString() }
+            }
+            intent.getStringExtra(Intent.EXTRA_TEXT)
+                ?.split(Regex("""\s+"""))
+                ?.firstOrNull { it.startsWith("magnet:", true) }
+                ?.let { return it }
+        }
+        return null
     }
 
     private fun mediaPermissions(): Array<String> =

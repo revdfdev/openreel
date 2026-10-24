@@ -60,7 +60,11 @@ class TorrentPrefs(context: Context) {
 }
 
 @Composable
-fun TorrentScreen(onPlay: (String) -> Unit) {
+fun TorrentScreen(
+    onPlay: (String) -> Unit,
+    /** A magnet, or the URI of a .torrent, opened from outside the app. */
+    pending: String? = null,
+) {
     val context = LocalContext.current
     val scope = rememberCoroutineScope()
     val prefs = remember { TorrentPrefs(context) }
@@ -113,6 +117,33 @@ fun TorrentScreen(onPlay: (String) -> Unit) {
         }
     }
 
+    // Something was opened from outside: queue it once the service is bound.
+    var consumed by remember { mutableStateOf(false) }
+    LaunchedEffect(pending, service) {
+        val svc = service ?: return@LaunchedEffect
+        val uri = pending ?: return@LaunchedEffect
+        if (consumed) return@LaunchedEffect
+        consumed = true
+        startService(context)
+        if (uri.startsWith("magnet:", true)) {
+            svc.add(uri)
+            note = "Added from link. Fetching metadata…"
+        } else {
+            // A .torrent arrives as a content:// URI we cannot hand to native
+            // code, so copy it somewhere libtorrent can read.
+            val ok = withContext(Dispatchers.IO) {
+                runCatching {
+                    val tmp = File(context.cacheDir, "incoming.torrent")
+                    context.contentResolver.openInputStream(Uri.parse(uri))?.use { ins ->
+                        tmp.outputStream().use { ins.copyTo(it) }
+                    } ?: return@runCatching false
+                    svc.engine.addTorrentFile(tmp)
+                }.getOrDefault(false)
+            }
+            note = if (ok) "Added torrent file." else "Could not read that torrent file."
+        }
+    }
+
     val valid = magnet.startsWith("magnet:", ignoreCase = true)
 
     Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
@@ -140,6 +171,22 @@ fun TorrentScreen(onPlay: (String) -> Unit) {
             }
         }
 
+        if (!isUnrestricted(context)) {
+            Spacer(Modifier.height(14.dp))
+            Row(verticalAlignment = Alignment.CenterVertically) {
+                Column(Modifier.weight(1f)) {
+                    MxText("Allow background downloading", Mx.type.mediumPrimary)
+                    MxText(
+                        "Android may pause downloads to save battery",
+                        Mx.type.secondary,
+                        Mx.colors.textSecondary,
+                    )
+                }
+                Spacer(Modifier.width(10.dp))
+                MxButton("Allow") { requestUnrestricted(context) }
+            }
+        }
+
         MxSectionLabel("Add a magnet")
         MxField(
             value = magnet,
@@ -149,21 +196,15 @@ fun TorrentScreen(onPlay: (String) -> Unit) {
         )
         Spacer(Modifier.height(12.dp))
         MxButton("Download", enabled = valid) {
-            val intent = Intent(context, TorrentService::class.java)
-            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                context.startForegroundService(intent)
-            } else {
-                context.startService(intent)
-            }
+            startService(context)
             service?.add(magnet)
             magnet = ""
             note = "Added. Fetching metadata…"
         }
 
-        // Keep the snapshot moving even if the service tick is throttled.
-        LaunchedEffect(service) {
-            while (service != null) { service?.engine?.refresh(); delay(1000) }
-        }
+        // The service already polls on its own thread; nothing to do here.
+        // (A second poll from the composition would be a main-thread call
+        // into native libtorrent, which is exactly what crashed before.)
 
         Spacer(Modifier.height(6.dp))
         if (items.isEmpty()) {
@@ -272,6 +313,43 @@ private fun formatBytes(b: Long): String = when {
     b >= 1L shl 20 -> "%.1f MB".format(b.toDouble() / (1L shl 20))
     b > 0 -> "%.0f KB".format(b.toDouble() / (1L shl 10))
     else -> "0"
+}
+
+/** Starts the download service in the foreground so it survives backgrounding. */
+private fun startService(context: Context) {
+    val intent = Intent(context, TorrentService::class.java)
+    if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+        context.startForegroundService(intent)
+    } else {
+        context.startService(intent)
+    }
+}
+
+/** True when the system will not throttle our background work. */
+private fun isUnrestricted(context: Context): Boolean = runCatching {
+    val pm = context.getSystemService(android.os.PowerManager::class.java)
+    pm?.isIgnoringBatteryOptimizations(context.packageName) == true
+}.getOrDefault(true)
+
+/**
+ * Ask to be exempted from battery optimisation. Sends the user to the system
+ * screen; Android gives no way to grant this silently.
+ */
+private fun requestUnrestricted(context: Context) {
+    runCatching {
+        context.startActivity(
+            Intent(
+                android.provider.Settings.ACTION_REQUEST_IGNORE_BATTERY_OPTIMIZATIONS,
+                Uri.parse("package:${context.packageName}"),
+            )
+        )
+    }.onFailure {
+        runCatching {
+            context.startActivity(
+                Intent(android.provider.Settings.ACTION_IGNORE_BATTERY_OPTIMIZATION_SETTINGS)
+            )
+        }
+    }
 }
 
 /** Readable name for the picked tree, falling back to the raw last segment. */
