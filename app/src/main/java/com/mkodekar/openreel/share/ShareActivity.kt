@@ -47,6 +47,13 @@ class ShareActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Draw under the status bar so MX's separate status tint is ours
+        // to paint (MX gets this via android:fitsSystemWindows).
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        // The window paints its own statusBarColor on top of our content, so
+        // clear it and let MxStatusBarScrim supply the tint.
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         val themePref = com.mkodekar.openreel.settings.Settings(this).theme
         setContent {
             MxTheme(dark = rememberThemeIsDark(themePref)) {
@@ -55,8 +62,9 @@ class ShareActivity : ComponentActivity() {
                     Modifier
                         .fillMaxSize()
                         .background(Mx.colors.background)
-                        .windowInsetsPadding(WindowInsets.systemBars)
+                        .windowInsetsPadding(WindowInsets.navigationBars)
                 ) {
+                    MxStatusBarScrim()
                     MxToolbar(title = "Share", onBack = { finish() })
                     MxTabStrip(listOf("Send", "Receive"), tab) { tab = it }
                     if (tab == 0) SendTab() else ReceiveTab()

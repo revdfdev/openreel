@@ -12,6 +12,7 @@ import androidx.compose.foundation.clickable
 import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.layout.windowInsetsTopHeight
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -246,23 +247,27 @@ fun MxToolbar(
     title: String,
     subtitle: String? = null,
     onBack: (() -> Unit)? = null,
+    /** Drawer handle; MX's main screen uses this instead of a back arrow. */
+    onMenu: (() -> Unit)? = null,
     actions: @Composable RowScope.() -> Unit = {},
 ) {
     Row(
         Modifier
             .fillMaxWidth()
-            .background(Mx.colors.background)
-            .height(56.dp)
+            .background(Mx.colors.toolbar)
+            .height(56.dp)          // ?attr/actionBarSize
             .padding(horizontal = 6.dp),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        if (onBack != null) {
+        if (onMenu != null) {
+            MxIconButton(onClick = onMenu) { MxHamburger() }
+        } else if (onBack != null) {
             MxIconButton(onClick = onBack) { MxChevron() }
         }
         Column(
             Modifier
                 .weight(1f)
-                .padding(start = if (onBack == null) 12.dp else 2.dp)
+                .padding(start = if (onBack == null && onMenu == null) 12.dp else 4.dp)
         ) {
             MxText(title, Mx.type.toolbar, maxLines = 1)
             if (subtitle != null) {
@@ -300,6 +305,63 @@ fun MxChevron() {
                 width = w * 0.14f,
                 cap = androidx.compose.ui.graphics.StrokeCap.Round,
             ),
+        )
+    }
+}
+
+/**
+ * Paints the status bar strip in MX's distinct status tone. MX gets this via
+ * android:fitsSystemWindows on its DrawerLayout; we draw it so the colour is
+ * part of the theme rather than the window.
+ */
+@Composable
+fun MxStatusBarScrim() {
+    Box(
+        Modifier
+            .fillMaxWidth()
+            .windowInsetsTopHeight(WindowInsets.statusBars)
+            .background(Mx.colors.statusBar)
+    )
+}
+
+/** MX's drawer handle: three stacked rules. */
+@Composable
+fun MxHamburger() {
+    Column(
+        verticalArrangement = Arrangement.spacedBy(3.5.dp),
+        horizontalAlignment = Alignment.CenterHorizontally,
+    ) {
+        repeat(3) {
+            Box(
+                Modifier
+                    .width(17.dp)
+                    .height(2.dp)
+                    .clip(RoundedCornerShape(1.dp))
+                    .background(Mx.colors.textPrimary)
+            )
+        }
+    }
+}
+
+/** Magnifier glyph for the toolbar search action. */
+@Composable
+fun MxSearchGlyph() {
+    val c = Mx.colors.textPrimary
+    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+        val w = size.width
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(width = w * 0.11f)
+        drawCircle(
+            color = c,
+            radius = w * 0.30f,
+            center = androidx.compose.ui.geometry.Offset(w * 0.42f, w * 0.42f),
+            style = stroke,
+        )
+        drawLine(
+            color = c,
+            start = androidx.compose.ui.geometry.Offset(w * 0.64f, w * 0.64f),
+            end = androidx.compose.ui.geometry.Offset(w * 0.92f, w * 0.92f),
+            strokeWidth = w * 0.11f,
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
         )
     }
 }

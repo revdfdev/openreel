@@ -39,6 +39,14 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
 
     private var created = false
     private var attached = false
+    /**
+     * Queued until BOTH the engine exists and a surface is attached. mpv
+     * handles "loadfile" on its own thread, so without this gate it can reach
+     * the demuxer before surfaceCreated() lands; vo/gpu then fails with
+     * "Missing surface pointer", mpv drops the video track for good and the
+     * file plays as audio only. That race is why playback worked on a cold
+     * start and died on a warm one.
+     */
     private var pendingUri: String? = null
     var observer: Observer? = null
 
@@ -58,6 +66,13 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
 
     fun init() {
         if (created) return
+        // MPVLib is static, so a relaunch can begin before the previous
+        // activity has torn its engine down. Clear any stale one rather than
+        // bailing out, which would leave this instance permanently dead.
+        if (!engineLive.compareAndSet(false, true)) {
+            runCatching { MPVLib.destroy() }
+            engineLive.set(true)
+        }
         MPVLib.create(context)
 
         // Defaults chosen to match MX Player behaviour.
@@ -69,11 +84,16 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         MPVLib.setOptionString("hwdec-codecs", "h264,hevc,mpeg4,mpeg2video,vp8,vp9,av1")
         MPVLib.setOptionString("ao", "audiotrack,opensles")
         MPVLib.setOptionString("sub-auto", "fuzzy")    // auto-load sibling .srt/.ass
-        MPVLib.setOptionString("sub-font-provider", "none")
+        // Android has no fontconfig; libass falls back to its own provider.
+        // Forcing "none" made it log "can't find selected font provider" and
+        // left styled .ass/.ssa without a usable face.
+        MPVLib.setOptionString("sub-font", "Roboto")
+        MPVLib.setOptionString("sub-fonts-dir", "/system/fonts")
         MPVLib.setOptionString("force-window", "no")
         MPVLib.setOptionString("keep-open", "always")
         MPVLib.setOptionString("cache", "yes")         // smooth network/torrent streaming
         MPVLib.setOptionString("demuxer-max-bytes", "32MiB")
+        MPVLib.setOptionString("audio-buffer", "0.3")   // was underrunning at the default
         MPVLib.setOptionString("idle", "yes")
 
         MPVLib.init()
@@ -85,8 +105,9 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         MPVLib.observeProperty("pause", MPVLib.MPV_FORMAT_FLAG)
         MPVLib.observeProperty("track-list/count", MPVLib.MPV_FORMAT_INT64)
 
-        // play() may have been called before init() finished.
-        pendingUri?.let { pendingUri = null; play(it) }
+        // Deliberately NOT starting playback here: see pendingUri. The surface
+        // callback is what releases it.
+        maybeStartPending()
     }
 
     fun release() {
@@ -96,12 +117,27 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         runCatching { MPVLib.destroy() }
         created = false
         attached = false
+        pendingUri = null
+        engineLive.set(false)
+    }
+
+    private companion object {
+        /** True while a libmpv engine exists anywhere in this process. */
+        val engineLive = java.util.concurrent.atomic.AtomicBoolean(false)
     }
 
     // --- playback ------------------------------------------------------------
 
     fun play(uri: String) {
-        if (!created) { pendingUri = uri; return }
+        pendingUri = uri
+        maybeStartPending()
+    }
+
+    /** Issues the queued loadfile once the engine and surface are both ready. */
+    private fun maybeStartPending() {
+        val uri = pendingUri ?: return
+        if (!created || !attached) return
+        pendingUri = null
         MPVLib.command(arrayOf("loadfile", uri))
     }
 
@@ -238,6 +274,8 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         MPVLib.setOptionString("force-window", "yes")
         MPVLib.setOptionString("vid", "auto")
         attached = true
+        // Now that vo/gpu has something to draw into, it is safe to load.
+        maybeStartPending()
     }
 
     override fun surfaceChanged(holder: SurfaceHolder, f: Int, w: Int, h: Int) {

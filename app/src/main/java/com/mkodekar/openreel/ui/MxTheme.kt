@@ -40,6 +40,13 @@ import com.mkodekar.openreel.R
 @Immutable
 data class MxColors(
     val background: Color,
+    /**
+     * MX tints three separate tones -- status bar, toolbar and content -- and
+     * using one flat colour for all of them is what made our chrome feel wrong.
+     * MX dark: status #1f2d3c, toolbar #1c2939, content #16202b.
+     */
+    val statusBar: Color,
+    val toolbar: Color,
     val surface: Color,        // rows, cards, thumbnails, option pills
     val surfaceRaised: Color,  // sheets, bars sitting above the list
     val textPrimary: Color,
@@ -54,6 +61,8 @@ data class MxColors(
 
 val MxDark = MxColors(
     background = Color(0xFF14161C),
+    statusBar = Color(0xFF1E212B),
+    toolbar = Color(0xFF1A1D26),
     surface = Color(0xFF22262F),
     surfaceRaised = Color(0xFF1B1F27),
     textPrimary = Color(0xFFE6E8ED),
@@ -68,6 +77,8 @@ val MxDark = MxColors(
 
 val MxLight = MxColors(
     background = Color(0xFFFFFFFF),
+    statusBar = Color(0xFFE8EAF0),
+    toolbar = Color(0xFFF7F8FB),
     surface = Color(0xFFF1F2F6),
     surfaceRaised = Color(0xFFFFFFFF),
     textPrimary = Color(0xFF23252E),
@@ -120,8 +131,9 @@ private val MxTypeDefault = MxType(
         fontFamily = Muli, fontWeight = FontWeight.SemiBold,
         fontSize = 10.sp, letterSpacing = 0.5.sp,
     ),
+    // toolbar.xml: 18sp, @font/font_muli_bold
     toolbar = TextStyle(
-        fontFamily = Muli, fontWeight = FontWeight.Bold, fontSize = 19.sp,
+        fontFamily = Muli, fontWeight = FontWeight.Bold, fontSize = 18.sp,
     ),
     tab = TextStyle(
         fontFamily = Muli, fontWeight = FontWeight.SemiBold, fontSize = 13.sp,

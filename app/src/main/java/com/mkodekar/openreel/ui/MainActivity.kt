@@ -21,6 +21,8 @@ import androidx.compose.ui.Modifier
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
+import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.withContext
 import com.mkodekar.openreel.browse.*
 import com.mkodekar.openreel.player.PlayerActivity
 import com.mkodekar.openreel.share.ShareActivity
@@ -37,6 +39,13 @@ class MainActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        // Draw under the status bar so MX's separate status tint is ours
+        // to paint (MX gets this via android:fitsSystemWindows).
+        androidx.core.view.WindowCompat.setDecorFitsSystemWindows(window, false)
+        // The window paints its own statusBarColor on top of our content, so
+        // clear it and let MxStatusBarScrim supply the tint.
+        window.statusBarColor = android.graphics.Color.TRANSPARENT
+        window.navigationBarColor = android.graphics.Color.TRANSPARENT
         val repo = MediaRepository(this)
         val prefs = BrowsePrefs(this)
         val settings = com.mkodekar.openreel.settings.Settings(this)
@@ -44,26 +53,41 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MxTheme(dark = rememberThemeIsDark(themePref)) {
-                var tab by remember { mutableIntStateOf(0) }
-                Column(
-                    Modifier
-                        .fillMaxSize()
-                        .background(Mx.colors.background)
-                        .windowInsetsPadding(WindowInsets.systemBars)
+                var section by remember { mutableStateOf(Section.VIDEOS) }
+                var drawerOpen by remember { mutableStateOf(false) }
+
+                MxDrawerScaffold(
+                    open = drawerOpen,
+                    section = section,
+                    onOpenChange = { drawerOpen = it },
+                    onSection = { section = it },
+                    onShare = {
+                        startActivity(Intent(this@MainActivity, ShareActivity::class.java))
+                    },
+                    onSettings = {
+                        startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                    },
                 ) {
-                    MxToolbar(title = "OpenReel") {
-                        MxTextAction("Share") {
-                            startActivity(Intent(this@MainActivity, ShareActivity::class.java))
+                    Column(
+                        Modifier
+                            .fillMaxSize()
+                            .background(Mx.colors.background)
+                    ) {
+                        // MX tints the status strip separately from the toolbar.
+                        MxStatusBarScrim()
+                        MxToolbar(
+                            title = section.title,
+                            onMenu = { drawerOpen = true },
+                        ) {
+                            MxIconButton(onClick = { /* search: not implemented yet */ }) {
+                                MxSearchGlyph()
+                            }
                         }
-                        MxTextAction("Settings") {
-                            startActivity(Intent(this@MainActivity, SettingsActivity::class.java))
+                        when (section) {
+                            Section.VIDEOS -> VideosTab(repo, prefs)
+                            Section.NETWORK -> NetworkTab()
+                            Section.TORRENT -> TorrentScreen { open(it) }
                         }
-                    }
-                    MxTabStrip(listOf("Videos", "Network", "Torrent"), tab) { tab = it }
-                    when (tab) {
-                        0 -> VideosTab(repo, prefs)
-                        1 -> NetworkTab()
-                        else -> TorrentScreen { open(it) }
                     }
                 }
             }
@@ -87,8 +111,14 @@ class MainActivity : ComponentActivity() {
         ) { r -> granted = r.values.any { it } || hasMediaPermission() }
 
         LaunchedEffect(Unit) { if (!granted) request.launch(mediaPermissions()) }
+        // LaunchedEffect runs on the Main dispatcher, so scanning MediaStore
+        // here blocked the UI thread outright -- the activity never drew and
+        // ActivityTaskManager reported a pause timeout. Do the query on IO.
         LaunchedEffect(granted) {
-            if (granted) videos = runCatching { repo.queryVideos() }.getOrDefault(emptyList())
+            if (!granted) return@LaunchedEffect
+            videos = withContext(Dispatchers.IO) {
+                runCatching { repo.queryVideos() }.getOrDefault(emptyList())
+            }
         }
 
         if (!granted) {

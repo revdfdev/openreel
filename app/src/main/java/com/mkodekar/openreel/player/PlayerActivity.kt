@@ -147,12 +147,59 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
         handleUri(intent?.dataString)
     }
 
+    /**
+     * The activity is singleTask, so picking another video while the player is
+     * already open arrives here rather than through onCreate. Without this the
+     * new file was simply ignored and the old one kept playing.
+     */
+    override fun onNewIntent(intent: Intent) {
+        super.onNewIntent(intent)
+        setIntent(intent)
+        // Remember where we were in the outgoing file before switching.
+        if (mediaKey.isNotEmpty()) resume.save(mediaKey, uiPosition, uiDuration)
+        uiPosition = 0
+        uiDuration = 0
+        uiLocked = false
+        handleUri(intent.dataString)
+    }
+
+
+    /**
+     * A human title for the top bar. The last path segment of a content:// URI
+     * is the MediaStore row id ("1000050633"), so ask the provider for
+     * DISPLAY_NAME and only fall back to the path for file/network URIs.
+     */
+    private fun displayNameFor(uri: String): String {
+        if (uri.startsWith("content://")) {
+            runCatching {
+                contentResolver.query(
+                    android.net.Uri.parse(uri),
+                    arrayOf(android.provider.OpenableColumns.DISPLAY_NAME),
+                    null, null, null,
+                )?.use { c ->
+                    val i = c.getColumnIndex(android.provider.OpenableColumns.DISPLAY_NAME)
+                    if (i >= 0 && c.moveToFirst()) {
+                        c.getString(i)?.takeIf { it.isNotBlank() }?.let { return it }
+                    }
+                }
+            }
+        }
+        if (uri.startsWith("magnet:", ignoreCase = true)) {
+            // dn= is the magnet display-name parameter.
+            Regex("[?&]dn=([^&]+)").find(uri)?.groupValues?.get(1)?.let {
+                return runCatching { java.net.URLDecoder.decode(it, "UTF-8") }.getOrDefault(it)
+            }
+            return "Torrent"
+        }
+        return uri.substringAfterLast('/').substringBefore('?').ifBlank { "Playing" }
+    }
+
     // --- URI routing ---------------------------------------------------------
 
     private fun handleUri(uri: String?) {
         if (uri == null) { finish(); return }
         mediaKey = uri
-        uiTitle = uri.substringAfterLast('/').substringBefore('?').ifBlank { "Playing" }
+        uiTitle = displayNameFor(uri)
 
         if (uri.startsWith("magnet:", ignoreCase = true)) {
             pendingMagnet = uri
