@@ -1,10 +1,25 @@
-# libtorrent4j uses JNI + SWIG bindings reached via native code -- keep them.
--keep class org.libtorrent4j.swig.** { *; }
--keep class org.libtorrent4j.** { *; }
+# --- libmpv -----------------------------------------------------------------
+# MPVLib is reached from native code, so its names must survive shrinking.
+# NOTE: the binding lives in dev.jdtech.mpv, not the upstream is.xyz.mpv --
+# a rule naming the old package matches nothing and lets R8 strip the class,
+# which then fails at runtime with an UnsatisfiedLinkError.
+-keep class dev.jdtech.mpv.** { *; }
+-keep interface dev.jdtech.mpv.** { *; }
 
-# mpv JNI binding is called from native code by name.
--keep class is.xyz.mpv.MPVLib { *; }
+# --- libtorrent4j -----------------------------------------------------------
+-keep class org.libtorrent4j.** { *; }
+-keep class org.libtorrent4j.swig.** { *; }
+
+# --- NanoHTTPD (reflection on handler methods) ------------------------------
+-keep class fi.iki.elonen.** { *; }
+
+# --- ZXing ------------------------------------------------------------------
+-keep class com.journeyapps.barcodescanner.** { *; }
+-keep class com.google.zxing.** { *; }
+
+# Anything with native methods, generally.
 -keepclasseswithmembernames class * { native <methods>; }
 
-# NanoHTTPD reflection-free, but keep the server base to be safe.
--keep class fi.iki.elonen.** { *; }
+# Keep the callback interfaces native code invokes back into.
+-keepclassmembers class * implements dev.jdtech.mpv.MPVLib$EventObserver { *; }
+-keepclassmembers class * implements dev.jdtech.mpv.MPVLib$LogObserver { *; }

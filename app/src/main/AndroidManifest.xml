@@ -227,12 +227,6 @@
             </intent-filter>
         </activity>
 
-        <!-- Background audio / PiP keep-alive -->
-        <service
-            android:name=".player.PlaybackService"
-            android:exported="false"
-            android:foregroundServiceType="mediaPlayback" />
-
         <!-- Torrent download/seed engine -->
         <service
             android:name=".torrent.TorrentService"

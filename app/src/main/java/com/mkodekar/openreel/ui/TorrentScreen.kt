@@ -188,7 +188,7 @@ fun TorrentScreen(
             // code, so copy it somewhere libtorrent can read.
             val ok = withContext(Dispatchers.IO) {
                 runCatching {
-                    val tmp = File(context.cacheDir, "incoming.torrent")
+                    val tmp = File(context.cacheDir, "incoming-${System.currentTimeMillis()}.torrent")
                     context.contentResolver.openInputStream(Uri.parse(uri))?.use { ins ->
                         tmp.outputStream().use { ins.copyTo(it) }
                     } ?: return@runCatching false

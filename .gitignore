@@ -11,3 +11,9 @@
 .cxx/
 # libmpv prebuilt binaries are added locally, not committed (large, built externally)
 /app/src/main/jniLibs/
+
+# Signing material: never commit keys or passwords
+keystore/
+keystore.properties
+*.jks
+*.keystore
