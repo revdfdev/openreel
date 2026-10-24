@@ -29,8 +29,9 @@ class SettingsActivity : ComponentActivity() {
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
         val s = Settings(this)
+        val themePref = s.theme
         setContent {
-            MxTheme {
+            MxTheme(dark = rememberThemeIsDark(themePref)) {
                 Column(
                     Modifier
                         .fillMaxSize()
@@ -73,7 +74,9 @@ class SettingsActivity : ComponentActivity() {
                         }
 
                         MxSectionLabel("General")
-                        ThemeRow(s.theme) { s.theme = it }
+                        // recreate() so the new theme applies at once rather
+                        // than on the next launch.
+                        ThemeRow(s.theme) { s.theme = it; recreate() }
                         Spacer(Modifier.height(32.dp))
                     }
                 }

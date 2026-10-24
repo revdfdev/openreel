@@ -167,6 +167,18 @@ object Mx {
     val type: MxType @Composable get() = LocalMxType.current
 }
 
+/**
+ * Resolves the Settings "theme" preference ("system" | "light" | "dark") to a
+ * concrete choice. Without this the stored preference was simply ignored and
+ * every screen followed the system setting.
+ */
+@Composable
+fun rememberThemeIsDark(preference: String): Boolean = when (preference) {
+    "light" -> false
+    "dark" -> true
+    else -> isSystemInDarkTheme()
+}
+
 @Composable
 fun MxTheme(
     dark: Boolean = isSystemInDarkTheme(),

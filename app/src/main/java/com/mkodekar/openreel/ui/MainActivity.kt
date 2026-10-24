@@ -39,9 +39,11 @@ class MainActivity : ComponentActivity() {
         super.onCreate(savedInstanceState)
         val repo = MediaRepository(this)
         val prefs = BrowsePrefs(this)
+        val settings = com.mkodekar.openreel.settings.Settings(this)
+        val themePref = settings.theme
 
         setContent {
-            MxTheme {
+            MxTheme(dark = rememberThemeIsDark(themePref)) {
                 var tab by remember { mutableIntStateOf(0) }
                 Column(
                     Modifier

@@ -47,8 +47,9 @@ class ShareActivity : ComponentActivity() {
 
     override fun onCreate(savedInstanceState: Bundle?) {
         super.onCreate(savedInstanceState)
+        val themePref = com.mkodekar.openreel.settings.Settings(this).theme
         setContent {
-            MxTheme {
+            MxTheme(dark = rememberThemeIsDark(themePref)) {
                 var tab by remember { mutableIntStateOf(0) }
                 Column(
                     Modifier

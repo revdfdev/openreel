@@ -27,6 +27,11 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
     interface Observer {
         fun onPosition(positionMs: Long, durationMs: Long)
         fun onPauseChanged(paused: Boolean)
+        /**
+         * Fired once the demuxer has the file open. Seeking before this lands
+         * is silently dropped by mpv, which is why resume has to wait for it.
+         */
+        fun onFileLoaded() {}
     }
 
     /** One selectable audio or subtitle track from the mpv "track-list". */
@@ -133,6 +138,40 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         MPVLib.setPropertyDouble("ab-loop-b", endSec)
     }
 
+    /** Subtitle size as a percentage, matching the Settings stepper. */
+    fun setSubtitleScale(percent: Int) {
+        if (created) MPVLib.setPropertyDouble("sub-scale", percent / 100.0)
+    }
+
+    /** MX's auto-load-sibling-subtitles toggle. */
+    fun setAutoLoadSubtitles(enabled: Boolean) {
+        if (created) MPVLib.setOptionString("sub-auto", if (enabled) "fuzzy" else "no")
+    }
+
+    /**
+     * Cycles MX's zoom modes: fit the frame, fill the screen (crop), then
+     * stretch. panscan 1.0 crops to fill; keepaspect=no stretches.
+     */
+    fun setZoomMode(mode: Int) {
+        if (!created) return
+        when (mode) {
+            1 -> { MPVLib.setPropertyString("keepaspect", "yes"); MPVLib.setPropertyDouble("panscan", 1.0) }
+            2 -> { MPVLib.setPropertyString("keepaspect", "no"); MPVLib.setPropertyDouble("panscan", 0.0) }
+            else -> { MPVLib.setPropertyString("keepaspect", "yes"); MPVLib.setPropertyDouble("panscan", 0.0) }
+        }
+    }
+
+    /** Current media title, for the player's top bar. */
+    fun mediaTitle(): String? =
+        if (created) MPVLib.getPropertyString("media-title") else null
+
+    fun setPaused(value: Boolean) {
+        if (!created) return
+        MPVLib.setPropertyBoolean("pause", value)
+        paused = value
+        observer?.onPauseChanged(value)
+    }
+
     fun selectAudio(id: Int) { if (created) MPVLib.setPropertyInt("aid", id) }
     fun selectSubtitle(id: Int) { if (created) MPVLib.setPropertyInt("sid", id) }
     fun disableSubtitle() { if (created) MPVLib.setPropertyString("sid", "no") }
@@ -184,7 +223,10 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         }
 
         override fun event(eventId: Int) {
-            if (eventId == MPVLib.MPV_EVENT_FILE_LOADED) reloadTracks()
+            if (eventId == MPVLib.MPV_EVENT_FILE_LOADED) {
+                reloadTracks()
+                observer?.onFileLoaded()
+            }
         }
     }
 

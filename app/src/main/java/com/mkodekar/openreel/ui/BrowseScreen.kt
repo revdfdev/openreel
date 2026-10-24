@@ -10,7 +10,12 @@ import androidx.compose.foundation.lazy.items
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
+import androidx.compose.ui.graphics.asImageBitmap
+import androidx.compose.ui.platform.LocalContext
+import androidx.compose.ui.unit.IntSize
 import androidx.compose.ui.unit.dp
+import android.util.Size as AndroidSize
+import com.mkodekar.openreel.browse.Thumbnails
 import com.mkodekar.openreel.browse.LayoutMode
 import com.mkodekar.openreel.browse.VideoItem
 import java.util.concurrent.TimeUnit
@@ -31,6 +36,35 @@ import java.util.concurrent.TimeUnit
  *                           an 18dp end inset reserved for the overflow.
  */
 
+/**
+ * Thumbnail that resolves its own frame. A cached bitmap paints immediately;
+ * anything else is decoded off the main thread and faded in, so scrolling a
+ * long folder never blocks on MediaMetadataRetriever.
+ */
+@Composable
+fun VideoThumb(
+    v: VideoItem,
+    modifier: Modifier,
+    iconSize: androidx.compose.ui.unit.Dp,
+    requestSize: AndroidSize,
+) {
+    val context = LocalContext.current
+    var frame by remember(v.id) {
+        mutableStateOf(Thumbnails.cached(v.id)?.asImageBitmap())
+    }
+    LaunchedEffect(v.id) {
+        if (frame == null) {
+            frame = Thumbnails.load(context, v, requestSize)?.asImageBitmap()
+        }
+    }
+    MxThumb(
+        modifier = modifier,
+        duration = formatDuration(v.durationMs),
+        iconSize = iconSize,
+        frame = frame,
+    )
+}
+
 /** list_row_media.xml */
 @Composable
 fun MediaRow(
@@ -50,10 +84,11 @@ fun MediaRow(
             ),
         verticalAlignment = Alignment.CenterVertically,
     ) {
-        MxThumb(
+        VideoThumb(
+            v = v,
             modifier = Modifier.size(MxDim.thumbWidth, MxDim.thumbHeight),
-            duration = formatDuration(v.durationMs),
             iconSize = 32.dp,
+            requestSize = AndroidSize(192, 112),   // 2x the 96x56 slot
         )
         Spacer(Modifier.width(MxDim.rowTextGap))
         Column(Modifier.weight(1f)) {
@@ -124,12 +159,13 @@ fun MediaGridCell(
             .padding(vertical = MxDim.gridPadVertical, horizontal = 4.dp)
             .mxClickable(onClick = onClick)
     ) {
-        MxThumb(
+        VideoThumb(
+            v = v,
             modifier = Modifier
                 .fillMaxWidth()
                 .aspectRatio(MxDim.GRID_ASPECT),
-            duration = formatDuration(v.durationMs),
             iconSize = 40.dp,     // grid uses a 40dp glyph, list uses 32dp
+            requestSize = AndroidSize(512, 288),
         )
         Spacer(Modifier.height(MxDim.gridTitleTopGap))
         Row {

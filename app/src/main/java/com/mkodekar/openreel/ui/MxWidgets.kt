@@ -110,20 +110,31 @@ fun MxThumb(
     duration: String?,
     iconSize: Dp = 32.dp,
     isNew: Boolean = false,
+    /** Decoded frame; while null the placeholder glyph shows instead. */
+    frame: androidx.compose.ui.graphics.ImageBitmap? = null,
 ) {
     Box(
         modifier
             .clip(RoundedCornerShape(MxDim.thumbCorner))
             .background(Mx.colors.surface)
     ) {
-        // Placeholder glyph until real frame extraction lands.
-        Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
-            Box(
-                Modifier
-                    .size(iconSize)
-                    .alpha(0.45f),
-                contentAlignment = Alignment.Center,
-            ) { MxPlayGlyph(iconSize * 0.62f, Mx.colors.textSecondary) }
+        if (frame != null) {
+            // centerCrop, matching MX's scaleType on the thumb ImageView.
+            androidx.compose.foundation.Image(
+                bitmap = frame,
+                contentDescription = null,
+                contentScale = androidx.compose.ui.layout.ContentScale.Crop,
+                modifier = Modifier.fillMaxSize(),
+            )
+        } else {
+            Box(Modifier.fillMaxSize(), contentAlignment = Alignment.Center) {
+                Box(
+                    Modifier
+                        .size(iconSize)
+                        .alpha(0.45f),
+                    contentAlignment = Alignment.Center,
+                ) { MxPlayGlyph(iconSize * 0.62f, Mx.colors.textSecondary) }
+            }
         }
         if (isNew) {
             Box(Modifier.align(Alignment.TopStart).padding(MxDim.badgeMargin)) {
