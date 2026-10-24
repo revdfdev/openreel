@@ -17,3 +17,6 @@ keystore/
 keystore.properties
 *.jks
 *.keystore
+
+# Packaged release artefacts
+release/
