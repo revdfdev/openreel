@@ -2,6 +2,10 @@
 package com.mkodekar.openreel.player
 
 import androidx.compose.animation.AnimatedVisibility
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.tween
 import androidx.compose.animation.fadeIn
 import androidx.compose.animation.fadeOut
@@ -58,6 +62,10 @@ fun PlayerOverlay(
     durationMs: Long,
     locked: Boolean,
     hud: Hud?,
+    /** True while mpv is opening, seeking or waiting on the network cache. */
+    buffering: Boolean,
+    /** mpv's cache-buffering-state, or -1 when it is not a cache stall. */
+    bufferPercent: Int,
     onTogglePause: () -> Unit,
     onSeekTo: (Long) -> Unit,
     onSeekBy: (Int) -> Unit,
@@ -94,6 +102,13 @@ fun PlayerOverlay(
                     )
                 }
         ) {
+            // --- buffering spinner (independent of the bars) ---
+            if (buffering) {
+                Box(Modifier.align(Alignment.Center)) {
+                    BufferingSpinner(bufferPercent)
+                }
+            }
+
             // --- gesture HUD (independent of the bars) ---
             HudLayer(hud)
 
@@ -144,8 +159,10 @@ fun PlayerOverlay(
             }
 
             // --- centre transport ---
+            // Hidden while buffering: the spinner occupies the same centre
+            // spot, and drawing both puts the ring behind the play button.
             AnimatedVisibility(
-                visible = visible,
+                visible = visible && !buffering,
                 modifier = Modifier.align(Alignment.Center),
                 enter = fadeIn(tween(180)),
                 exit = fadeOut(tween(150)),
@@ -291,6 +308,51 @@ private fun Scrubber(
                 radius = 6.5.dp.toPx(),
                 center = Offset(size.width * fraction.coerceIn(0f, 1f), cy),
             )
+        }
+    }
+}
+
+/**
+ * Indeterminate ring, plus the cache percentage when mpv reports one. A
+ * network stream can take several seconds to open, and with no indicator the
+ * black screen reads as a failure.
+ */
+@Composable
+private fun BufferingSpinner(percent: Int) {
+    val t = rememberInfiniteTransition(label = "buffer")
+    val angle by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(900, easing = LinearEasing)),
+        label = "spin",
+    )
+    val accent = Mx.colors.accent
+    Column(horizontalAlignment = Alignment.CenterHorizontally) {
+        Box(
+            Modifier
+                .size(54.dp)
+                .clip(RoundedCornerShape(27.dp))
+                .background(Color.Black.copy(alpha = 0.45f)),
+            contentAlignment = Alignment.Center,
+        ) {
+            Canvas(Modifier.size(28.dp)) {
+                val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+                    width = 3.dp.toPx(),
+                    cap = androidx.compose.ui.graphics.StrokeCap.Round,
+                )
+                drawArc(
+                    color = Color.White.copy(alpha = 0.22f),
+                    startAngle = 0f, sweepAngle = 360f, useCenter = false, style = stroke,
+                )
+                drawArc(
+                    color = accent,
+                    startAngle = angle, sweepAngle = 90f, useCenter = false, style = stroke,
+                )
+            }
+        }
+        if (percent in 0..100) {
+            Spacer(Modifier.height(8.dp))
+            MxText("$percent%", Mx.type.secondary, Color.White)
         }
     }
 }

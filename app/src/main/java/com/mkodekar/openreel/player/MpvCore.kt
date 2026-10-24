@@ -32,6 +32,11 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
          * is silently dropped by mpv, which is why resume has to wait for it.
          */
         fun onFileLoaded() {}
+        /**
+         * Buffering state. [percent] is mpv's cache-buffering-state, or -1
+         * when it is not a cache stall (e.g. still opening the file).
+         */
+        fun onBuffering(buffering: Boolean, percent: Int) {}
     }
 
     /** One selectable audio or subtitle track from the mpv "track-list". */
@@ -52,6 +57,10 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
 
     @Volatile var tracks: List<Track> = emptyList(); private set
     @Volatile var paused = false; private set
+    @Volatile var buffering = false; private set
+    @Volatile var cachePercent = -1; private set
+    private var coreIdle = false
+    private var pausedForCache = false
     @Volatile var positionMs = 0L; private set
     @Volatile var durationMs = 0L; private set
 
@@ -104,6 +113,12 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
         MPVLib.observeProperty("duration", MPVLib.MPV_FORMAT_INT64)
         MPVLib.observeProperty("pause", MPVLib.MPV_FORMAT_FLAG)
         MPVLib.observeProperty("track-list/count", MPVLib.MPV_FORMAT_INT64)
+        // Drives the loading spinner: core-idle covers opening/seeking,
+        // paused-for-cache covers a network stall mid-playback.
+        MPVLib.observeProperty("core-idle", MPVLib.MPV_FORMAT_FLAG)
+        MPVLib.observeProperty("paused-for-cache", MPVLib.MPV_FORMAT_FLAG)
+        MPVLib.observeProperty("cache-buffering-state", MPVLib.MPV_FORMAT_INT64)
+        MPVLib.observeProperty("eof-reached", MPVLib.MPV_FORMAT_FLAG)
 
         // Deliberately NOT starting playback here: see pendingUri. The surface
         // callback is what releases it.
@@ -218,6 +233,19 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
 
     // --- track list ----------------------------------------------------------
 
+    /**
+     * Spinner on when mpv is stalled but we did not ask it to pause: either it
+     * is still opening/seeking (core-idle) or the network cache ran dry
+     * (paused-for-cache). Without this a network stream shows several seconds
+     * of black and simply looks broken.
+     */
+    private fun recomputeBuffering() {
+        val now = (coreIdle || pausedForCache) && !paused
+        if (now == buffering) return
+        buffering = now
+        observer?.onBuffering(now, if (pausedForCache) cachePercent else -1)
+    }
+
     private fun reloadTracks() {
         if (!created) return
         val count = MPVLib.getPropertyInt("track-list/count") ?: return
@@ -246,15 +274,24 @@ class MpvCore(private val context: Context) : SurfaceHolder.Callback {
                 "time-pos" -> positionMs = value * 1000
                 "duration" -> durationMs = value * 1000
                 "track-list/count" -> { reloadTracks(); return }
+                "cache-buffering-state" -> {
+                    cachePercent = value.toInt()
+                    if (buffering) observer?.onBuffering(true, cachePercent)
+                    return
+                }
                 else -> return
             }
             observer?.onPosition(positionMs, durationMs)
         }
 
         override fun eventProperty(property: String, value: Boolean) {
-            if (property == "pause") {
-                paused = value
-                observer?.onPauseChanged(value)
+            when (property) {
+                "pause" -> {
+                    paused = value
+                    observer?.onPauseChanged(value)
+                }
+                "core-idle" -> { coreIdle = value; recomputeBuffering() }
+                "paused-for-cache" -> { pausedForCache = value; recomputeBuffering() }
             }
         }
 

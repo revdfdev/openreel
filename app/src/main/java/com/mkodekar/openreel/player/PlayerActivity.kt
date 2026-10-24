@@ -16,6 +16,7 @@ import android.view.SurfaceView
 import android.widget.FrameLayout
 import androidx.activity.ComponentActivity
 import androidx.compose.runtime.getValue
+import androidx.compose.runtime.mutableIntStateOf
 import androidx.compose.runtime.mutableLongStateOf
 import androidx.compose.runtime.mutableStateOf
 import androidx.compose.runtime.setValue
@@ -68,6 +69,8 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
     private var uiTitle by mutableStateOf("")
     private var uiLocked by mutableStateOf(false)
     private var uiHud by mutableStateOf<Hud?>(null)
+    private var uiBuffering by mutableStateOf(false)
+    private var uiBufferPercent by mutableIntStateOf(-1)
     private var hudJob: kotlinx.coroutines.Job? = null
 
     // --- torrent service binding (magnet URIs only) ---
@@ -114,6 +117,8 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
                     durationMs = uiDuration,
                     locked = uiLocked,
                     hud = uiHud,
+                    buffering = uiBuffering,
+                    bufferPercent = uiBufferPercent,
                     seekStepSeconds = settings.seekStepSeconds,
                     onTogglePause = { mpv.togglePause() },
                     onSeekTo = { mpv.seekTo(it) },
@@ -250,6 +255,10 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
 
     override fun onPauseChanged(paused: Boolean) {
         runOnUiThread { uiPaused = paused }
+    }
+
+    override fun onBuffering(buffering: Boolean, percent: Int) {
+        runOnUiThread { uiBuffering = buffering; uiBufferPercent = percent }
     }
 
     override fun onFileLoaded() {
