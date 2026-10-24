@@ -5,50 +5,90 @@ import android.content.ComponentName
 import android.content.Context
 import android.content.Intent
 import android.content.ServiceConnection
+import android.net.Uri
 import android.os.Build
 import android.os.IBinder
+import androidx.activity.compose.rememberLauncherForActivityResult
+import androidx.activity.result.contract.ActivityResultContracts
 import androidx.compose.animation.AnimatedVisibility
-import androidx.compose.animation.core.*
-import androidx.compose.foundation.Canvas
 import androidx.compose.foundation.background
 import androidx.compose.foundation.layout.*
+import androidx.compose.foundation.lazy.LazyColumn
+import androidx.compose.foundation.lazy.items
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
 import androidx.compose.ui.Modifier
 import androidx.compose.ui.draw.clip
-import androidx.compose.ui.geometry.Offset
 import androidx.compose.ui.platform.LocalContext
 import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
+import androidx.documentfile.provider.DocumentFile
+import com.mkodekar.openreel.torrent.TorrentEngine
 import com.mkodekar.openreel.torrent.TorrentService
+import kotlinx.coroutines.Dispatchers
 import kotlinx.coroutines.delay
+import kotlinx.coroutines.launch
+import kotlinx.coroutines.withContext
+import java.io.File
 
 /**
- * Torrent tab: paste a magnet, watch it fetch metadata and buffer, then hand
- * the file to the player while it keeps downloading.
+ * Torrent downloads.
  *
- * Styled with the MX widgets, and bound to the real TorrentService -- the
- * numbers on screen come from TorrentEngine.progress()/downloadRate(), not
- * from a placeholder.
+ * This is a download manager rather than a player front-end: add a magnet, see
+ * progress, pause, resume and remove, and choose where finished files are
+ * saved. Playing is one action on a download, not the only thing you can do
+ * with it -- and because libtorrent can hand over the start of a file early,
+ * Play works before the download finishes.
+ *
+ * On where files land: libtorrent writes through native code, so it needs a
+ * real filesystem path and cannot write into a Storage Access Framework tree.
+ * Downloads therefore run in the app's own external directory, and finished
+ * files are copied into the folder you pick. That keeps the destination free
+ * under scoped storage without asking for broad storage permissions.
  */
+
+/** Remembers the destination folder the user picked. */
+class TorrentPrefs(context: Context) {
+    private val prefs = context.getSharedPreferences("torrent", Context.MODE_PRIVATE)
+
+    var destination: Uri?
+        get() = prefs.getString(KEY_DEST, null)?.let(Uri::parse)
+        set(v) = prefs.edit().putString(KEY_DEST, v?.toString()).apply()
+
+    private companion object { const val KEY_DEST = "destination_tree" }
+}
+
 @Composable
 fun TorrentScreen(onPlay: (String) -> Unit) {
     val context = LocalContext.current
+    val scope = rememberCoroutineScope()
+    val prefs = remember { TorrentPrefs(context) }
+
     var magnet by remember { mutableStateOf("") }
     var service by remember { mutableStateOf<TorrentService?>(null) }
-    var started by remember { mutableStateOf(false) }
+    var destination by remember { mutableStateOf(prefs.destination) }
+    var note by remember { mutableStateOf<String?>(null) }
+    val exported = remember { mutableStateMapOf<String, Boolean>() }
 
-    // live engine stats
-    var progress by remember { mutableFloatStateOf(0f) }
-    var rateBytes by remember { mutableIntStateOf(0) }
-    var hasMeta by remember { mutableStateOf(false) }
-    var readyToPlay by remember { mutableStateOf(false) }
-    var fileName by remember { mutableStateOf<String?>(null) }
+    val items by (service?.engine?.items ?: remember { kotlinx.coroutines.flow.MutableStateFlow(emptyList<TorrentEngine.Item>()) })
+        .collectAsState()
 
-    val valid = magnet.startsWith("magnet:", ignoreCase = true)
+    // Folder picker. Persist the grant so it survives a restart.
+    val pickFolder = rememberLauncherForActivityResult(
+        ActivityResultContracts.OpenDocumentTree()
+    ) { uri ->
+        if (uri == null) return@rememberLauncherForActivityResult
+        runCatching {
+            context.contentResolver.takePersistableUriPermission(
+                uri,
+                Intent.FLAG_GRANT_READ_URI_PERMISSION or Intent.FLAG_GRANT_WRITE_URI_PERMISSION,
+            )
+        }
+        destination = uri
+        prefs.destination = uri
+    }
 
-    // Bind to the service while this tab is on screen.
     DisposableEffect(Unit) {
         val conn = object : ServiceConnection {
             override fun onServiceConnected(n: ComponentName?, b: IBinder?) {
@@ -61,146 +101,209 @@ fun TorrentScreen(onPlay: (String) -> Unit) {
         onDispose { runCatching { context.unbindService(conn) } }
     }
 
-    // Poll the engine once started.
-    LaunchedEffect(started, service) {
-        if (!started) return@LaunchedEffect
+    // Copy finished downloads into the chosen folder, once each.
+    LaunchedEffect(items, destination) {
         val svc = service ?: return@LaunchedEffect
-        while (true) {
-            val e = svc.engine
-            progress = e.progress()
-            rateBytes = e.downloadRate()
-            hasMeta = e.hasMetadata()
-            readyToPlay = hasMeta && e.readyToStartPlayback()
-            fileName = e.primaryVideoPath()?.name
-            delay(700)
+        val dest = destination ?: return@LaunchedEffect
+        items.filter { it.finished && exported[it.id] != true }.forEach { item ->
+            exported[item.id] = true
+            val files = svc.engine.filesOf(item.id)
+            val copied = withContext(Dispatchers.IO) { exportFiles(context, dest, files) }
+            note = if (copied > 0) "Saved ${item.name} to your folder" else null
         }
     }
 
-    Column(Modifier.fillMaxSize().padding(20.dp)) {
-        MxSectionLabel("Magnet link")
+    val valid = magnet.startsWith("magnet:", ignoreCase = true)
+
+    Column(Modifier.fillMaxSize().padding(horizontal = 20.dp)) {
+
+        MxSectionLabel("Save finished downloads to")
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                MxText(
+                    destination?.let { folderLabel(context, it) } ?: "Not set",
+                    Mx.type.mediumPrimary,
+                    maxLines = 1,
+                )
+                MxText(
+                    if (destination == null)
+                        "Pick a folder or finished files stay inside the app"
+                    else
+                        "Finished files are copied here",
+                    Mx.type.secondary,
+                    Mx.colors.textSecondary,
+                )
+            }
+            Spacer(Modifier.width(10.dp))
+            MxButton(if (destination == null) "Choose" else "Change", filled = destination == null) {
+                runCatching { pickFolder.launch(null) }
+            }
+        }
+
+        MxSectionLabel("Add a magnet")
         MxField(
             value = magnet,
             onValueChange = { magnet = it },
             placeholder = "magnet:?xt=urn:btih:…",
             keyboardType = KeyboardType.Uri,
         )
-        Spacer(Modifier.height(14.dp))
-
-        Row(verticalAlignment = Alignment.CenterVertically) {
-            MxButton(if (started) "Restart" else "Start", enabled = valid) {
-                val intent = Intent(context, TorrentService::class.java)
-                if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
-                    context.startForegroundService(intent)
-                } else {
-                    context.startService(intent)
-                }
-                service?.stream(magnet) { }
-                started = true
+        Spacer(Modifier.height(12.dp))
+        MxButton("Download", enabled = valid) {
+            val intent = Intent(context, TorrentService::class.java)
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.O) {
+                context.startForegroundService(intent)
+            } else {
+                context.startService(intent)
             }
-            if (readyToPlay) {
-                Spacer(Modifier.width(10.dp))
-                MxButton("Play now", filled = false) { onPlay(magnet) }
-            }
+            service?.add(magnet)
+            magnet = ""
+            note = "Added. Fetching metadata…"
         }
 
-        AnimatedVisibility(visible = started) {
-            Column(Modifier.padding(top = 22.dp)) {
-                // Stage indicator: metadata -> buffering -> ready.
-                TorrentStage(
-                    hasMeta = hasMeta,
-                    readyToPlay = readyToPlay,
-                )
-                Spacer(Modifier.height(18.dp))
+        // Keep the snapshot moving even if the service tick is throttled.
+        LaunchedEffect(service) {
+            while (service != null) { service?.engine?.refresh(); delay(1000) }
+        }
 
-                fileName?.let {
-                    MxText(it, Mx.type.mediumPrimary, maxLines = 2)
-                    Spacer(Modifier.height(8.dp))
-                }
-
-                MxProgress(progress, height = 4.dp)
-                Spacer(Modifier.height(8.dp))
-                Row(Modifier.fillMaxWidth()) {
-                    MxText(
-                        "${(progress * 100).toInt()}%",
-                        Mx.type.secondary,
-                        Mx.colors.textSecondary,
+        Spacer(Modifier.height(6.dp))
+        if (items.isEmpty()) {
+            Box(Modifier.fillMaxWidth().weight(1f), contentAlignment = Alignment.Center) {
+                MxText("No downloads yet.", Mx.type.primary, Mx.colors.textSecondary)
+            }
+        } else {
+            MxSectionLabel("Downloads")
+            LazyColumn(Modifier.fillMaxWidth().weight(1f)) {
+                items(items, key = { it.id }) { item ->
+                    DownloadRow(
+                        item = item,
+                        onPause = { service?.engine?.pause(item.id) },
+                        onResume = { service?.engine?.resume(item.id) },
+                        onRemove = { service?.engine?.remove(item.id, deleteFiles = false) },
+                        onPlay = {
+                            val svc = service ?: return@DownloadRow
+                            scope.launch {
+                                svc.engine.setStreaming(item.id)
+                                note = "Buffering the start of ${item.name}…"
+                                while (!(svc.engine.hasMetadata(item.id) &&
+                                        svc.engine.readyToStartPlayback(item.id))
+                                ) delay(500)
+                                val f = svc.engine.primaryVideoPath(item.id)
+                                if (f != null) { note = null; onPlay("file://${f.absolutePath}") }
+                            }
+                        },
                     )
-                    Spacer(Modifier.weight(1f))
-                    MxText(rateLabel(rateBytes), Mx.type.secondary, Mx.colors.textSecondary)
                 }
             }
         }
 
-        Spacer(Modifier.weight(1f))
+        note?.let {
+            MxText(it, Mx.type.secondary, Mx.colors.textSecondary)
+            Spacer(Modifier.height(6.dp))
+        }
         MxText(
             "Only download content you are legally entitled to.",
             Mx.type.secondary,
             Mx.colors.textSecondary,
         )
+        Spacer(Modifier.height(12.dp))
     }
 }
 
-/** Three-step pipeline with the active step pulsing. */
 @Composable
-private fun TorrentStage(hasMeta: Boolean, readyToPlay: Boolean) {
-    val step = when {
-        readyToPlay -> 2
-        hasMeta -> 1
-        else -> 0
-    }
-    val labels = listOf("Fetching metadata", "Buffering header", "Ready to play")
-    Column {
-        labels.forEachIndexed { i, label ->
-            val done = i < step
-            val active = i == step && !(readyToPlay && i == 2)
-            Row(
-                Modifier.padding(vertical = 5.dp),
-                verticalAlignment = Alignment.CenterVertically,
-            ) {
-                StageDot(done = done || (readyToPlay && i == 2), active = active)
-                Spacer(Modifier.width(10.dp))
-                MxText(
-                    label,
-                    Mx.type.secondary,
-                    when {
-                        done || (readyToPlay && i == 2) -> Mx.colors.accent
-                        active -> Mx.colors.textPrimary
-                        else -> Mx.colors.textSecondary
-                    },
-                )
+private fun DownloadRow(
+    item: TorrentEngine.Item,
+    onPause: () -> Unit,
+    onResume: () -> Unit,
+    onRemove: () -> Unit,
+    onPlay: () -> Unit,
+) {
+    Column(Modifier.fillMaxWidth().padding(vertical = 12.dp)) {
+        Row(verticalAlignment = Alignment.CenterVertically) {
+            Column(Modifier.weight(1f)) {
+                MxText(item.name, Mx.type.mediumPrimary, maxLines = 2)
+                Spacer(Modifier.height(2.dp))
+                MxText(statusLine(item), Mx.type.secondary, Mx.colors.textSecondary, maxLines = 1)
+            }
+            if (item.sequential) {
+                Box(
+                    Modifier
+                        .clip(RoundedCornerShape(3.dp))
+                        .background(Mx.colors.accent.copy(alpha = 0.18f))
+                        .padding(horizontal = 5.dp, vertical = 2.dp)
+                ) { MxText("STREAMING", Mx.type.tag, Mx.colors.accent) }
             }
         }
+
+        Spacer(Modifier.height(8.dp))
+        MxProgress(item.progress, height = 4.dp)
+        Spacer(Modifier.height(10.dp))
+
+        Row(horizontalArrangement = Arrangement.spacedBy(8.dp)) {
+            // Play works before completion: libtorrent can deliver the start
+            // of the file first once the torrent is in sequential order.
+            if (item.hasMetadata) {
+                MxButton("Play", filled = false, onClick = onPlay)
+            }
+            if (item.paused) MxButton("Resume", filled = false, onClick = onResume)
+            else if (!item.finished) MxButton("Pause", filled = false, onClick = onPause)
+            Spacer(Modifier.weight(1f))
+            MxButton("Remove", filled = false, onClick = onRemove)
+        }
     }
+    MxDivider()
 }
 
-@Composable
-private fun StageDot(done: Boolean, active: Boolean) {
-    val pulse = rememberInfiniteTransition(label = "pulse")
-    val scale by pulse.animateFloat(
-        initialValue = 0.6f,
-        targetValue = 1f,
-        animationSpec = infiniteRepeatable(tween(650), RepeatMode.Reverse),
-        label = "dot",
-    )
-    val size = 9.dp
-    Box(Modifier.size(size), contentAlignment = Alignment.Center) {
-        Box(
-            Modifier
-                .size(if (active) size * scale else size * 0.78f)
-                .clip(RoundedCornerShape(50))
-                .background(
-                    when {
-                        done -> Mx.colors.accent
-                        active -> Mx.colors.accent
-                        else -> Mx.colors.surface
-                    }
-                )
-        )
+private fun statusLine(item: TorrentEngine.Item): String {
+    if (!item.hasMetadata) return "Fetching metadata…"
+    val pct = "${(item.progress * 100).toInt()}%"
+    val size = if (item.totalBytes > 0) formatBytes(item.totalBytes) else ""
+    val rate = when {
+        item.finished -> "Done"
+        item.paused -> "Paused"
+        else -> "${formatBytes(item.downloadRate.toLong())}/s"
     }
+    return listOf(pct, size, rate, "${item.peers} peers")
+        .filter { it.isNotBlank() }
+        .joinToString("  ·  ")
 }
 
-private fun rateLabel(bytesPerSec: Int): String = when {
-    bytesPerSec >= 1 shl 20 -> "%.1f MB/s".format(bytesPerSec.toDouble() / (1 shl 20))
-    bytesPerSec > 0 -> "%.0f KB/s".format(bytesPerSec.toDouble() / (1 shl 10))
-    else -> "—"
+private fun formatBytes(b: Long): String = when {
+    b >= 1L shl 30 -> "%.1f GB".format(b.toDouble() / (1L shl 30))
+    b >= 1L shl 20 -> "%.1f MB".format(b.toDouble() / (1L shl 20))
+    b > 0 -> "%.0f KB".format(b.toDouble() / (1L shl 10))
+    else -> "0"
+}
+
+/** Readable name for the picked tree, falling back to the raw last segment. */
+private fun folderLabel(context: Context, tree: Uri): String =
+    runCatching { DocumentFile.fromTreeUri(context, tree)?.name }.getOrNull()
+        ?: tree.lastPathSegment?.substringAfterLast(':')?.ifBlank { "Chosen folder" }
+        ?: "Chosen folder"
+
+/**
+ * Copy finished files into the user's folder. Returns how many were written.
+ * Existing names are left alone rather than overwritten.
+ */
+private fun exportFiles(context: Context, tree: Uri, files: List<File>): Int {
+    val dir = DocumentFile.fromTreeUri(context, tree) ?: return 0
+    var count = 0
+    files.filter { it.isFile && it.length() > 0 }.forEach { src ->
+        if (dir.findFile(src.name) != null) return@forEach
+        val mime = when (src.extension.lowercase()) {
+            "mp4", "m4v" -> "video/mp4"
+            "mkv" -> "video/x-matroska"
+            "avi" -> "video/x-msvideo"
+            "webm" -> "video/webm"
+            "mp3" -> "audio/mpeg"
+            else -> "application/octet-stream"
+        }
+        val out = dir.createFile(mime, src.name) ?: return@forEach
+        runCatching {
+            context.contentResolver.openOutputStream(out.uri)?.use { os ->
+                src.inputStream().use { it.copyTo(os) }
+            }
+            count++
+        }
+    }
+    return count
 }

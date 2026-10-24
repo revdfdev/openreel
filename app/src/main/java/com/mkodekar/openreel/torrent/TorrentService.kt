@@ -7,7 +7,6 @@ import android.os.Binder
 import android.os.IBinder
 import androidx.core.app.NotificationCompat
 import com.mkodekar.openreel.OpenReelApp
-import org.libtorrent4j.TorrentHandle
 import java.io.File
 
 /**
@@ -30,15 +29,31 @@ class TorrentService : Service() {
         val dir = File(getExternalFilesDir(null), "torrents").apply { mkdirs() }
         engine = TorrentEngine(dir).also { it.start() }
         startForeground(NOTIF_ID, notification("Download service running"))
+
+        // libtorrent has no push for status, so refresh the snapshot the UI
+        // observes on a timer while the service is alive.
+        ticker = android.os.Handler(android.os.Looper.getMainLooper())
+        ticker?.post(object : Runnable {
+            override fun run() {
+                engine.refresh()
+                ticker?.postDelayed(this, 1000)
+            }
+        })
     }
 
-    /** Add a magnet and begin a sequential (streamable) download. */
-    fun stream(magnet: String, onReady: (TorrentHandle) -> Unit) =
-        engine.addMagnet(magnet, onReady)
+    /** Queue a magnet as an ordinary download. */
+    fun add(magnet: String) = engine.add(magnet)
+
+    /** Switch one download to sequential order so it can be streamed. */
+    fun stream(id: String) = engine.setStreaming(id)
 
     override fun onBind(intent: Intent?): IBinder = binder
 
+    private var ticker: android.os.Handler? = null
+
     override fun onDestroy() {
+        ticker?.removeCallbacksAndMessages(null)
+        ticker = null
         engine.stop()
         super.onDestroy()
     }

@@ -55,6 +55,9 @@
                 <action android:name="android.intent.action.MAIN" />
                 <category android:name="android.intent.category.LAUNCHER" />
             </intent-filter>
+            <meta-data
+                android:name="android.app.shortcuts"
+                android:resource="@xml/shortcuts" />
         </activity>
 
         <!-- Player: also opens video files from other apps / file managers -->
@@ -110,6 +113,19 @@
                 <category android:name="android.intent.category.DEFAULT" />
                 <data android:mimeType="video/*" />
                 <data android:mimeType="audio/*" />
+            </intent-filter>
+
+            <!--
+              A link shared from a browser arrives as text/plain, not as a
+              media type, so network streams are only reachable from the share
+              sheet if we accept it. incomingUri() keeps http(s)/rtsp/magnet
+              text and ignores anything else, so sharing ordinary text here is
+              a no-op rather than a broken player.
+            -->
+            <intent-filter android:priority="1">
+                <action android:name="android.intent.action.SEND" />
+                <category android:name="android.intent.category.DEFAULT" />
+                <data android:mimeType="text/plain" />
             </intent-filter>
 
             <!-- Magnet links for the torrent path -->

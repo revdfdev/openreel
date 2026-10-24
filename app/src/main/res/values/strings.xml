@@ -6,4 +6,10 @@
     <string name="tab_network">Network</string>
     <string name="tab_torrent">Torrent</string>
     <string name="tab_share">Share</string>
+    <string name="shortcut_network_short">Network</string>
+    <string name="shortcut_network_long">Play a network stream</string>
+    <string name="shortcut_share_short">Share</string>
+    <string name="shortcut_share_long">Send files over Wi-Fi Direct</string>
+    <string name="shortcut_torrent_short">Torrent</string>
+    <string name="shortcut_torrent_long">Download a torrent</string>
 </resources>

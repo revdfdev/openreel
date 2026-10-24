@@ -1,0 +1,46 @@
+<?xml version="1.0" encoding="utf-8"?>
+<!--
+  Long-press the launcher icon to reach the three things OpenReel does,
+  without opening the app and navigating the drawer first.
+-->
+<shortcuts xmlns:android="http://schemas.android.com/apk/res/android">
+    <shortcut
+        android:shortcutId="network"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_network"
+        android:shortcutShortLabel="@string/shortcut_network_short"
+        android:shortcutLongLabel="@string/shortcut_network_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.mkodekar.openreel"
+            android:targetClass="com.mkodekar.openreel.ui.MainActivity">
+            <extra android:name="section" android:value="NETWORK" />
+        </intent>
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="share"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_share"
+        android:shortcutShortLabel="@string/shortcut_share_short"
+        android:shortcutLongLabel="@string/shortcut_share_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.mkodekar.openreel"
+            android:targetClass="com.mkodekar.openreel.share.ShareActivity" />
+    </shortcut>
+
+    <shortcut
+        android:shortcutId="torrent"
+        android:enabled="true"
+        android:icon="@drawable/ic_shortcut_torrent"
+        android:shortcutShortLabel="@string/shortcut_torrent_short"
+        android:shortcutLongLabel="@string/shortcut_torrent_long">
+        <intent
+            android:action="android.intent.action.VIEW"
+            android:targetPackage="com.mkodekar.openreel"
+            android:targetClass="com.mkodekar.openreel.ui.MainActivity">
+            <extra android:name="section" android:value="TORRENT" />
+        </intent>
+    </shortcut>
+</shortcuts>

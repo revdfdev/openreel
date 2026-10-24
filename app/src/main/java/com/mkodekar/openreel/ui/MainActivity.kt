@@ -53,7 +53,14 @@ class MainActivity : ComponentActivity() {
 
         setContent {
             MxTheme(dark = rememberThemeIsDark(themePref)) {
-                var section by remember { mutableStateOf(Section.VIDEOS) }
+                // Launcher shortcuts open straight into a section.
+                var section by remember {
+                    mutableStateOf(
+                        runCatching {
+                            Section.valueOf(intent?.getStringExtra("section").orEmpty())
+                        }.getOrDefault(Section.VIDEOS)
+                    )
+                }
                 var drawerOpen by remember { mutableStateOf(false) }
                 // null = not searching; "" = search open but empty.
                 var search by remember { mutableStateOf<String?>(null) }

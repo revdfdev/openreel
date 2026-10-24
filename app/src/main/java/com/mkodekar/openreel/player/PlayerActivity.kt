@@ -182,10 +182,15 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
                 intent, Intent.EXTRA_STREAM, android.net.Uri::class.java
             )
             if (stream != null) return stream.toString()
-            // Some apps share a bare URL as text rather than a stream.
+            // Browsers share a link as text rather than a stream. Pick the
+            // first token that looks like something libmpv can open; shared
+            // prose often carries a title before the URL.
             intent.getStringExtra(Intent.EXTRA_TEXT)
-                ?.trim()
-                ?.takeIf { it.startsWith("http", true) || it.startsWith("magnet:", true) }
+                ?.split(Regex("""\s+"""))
+                ?.firstOrNull { token ->
+                    token.startsWith("magnet:", true) ||
+                        com.mkodekar.openreel.stream.NetworkSource.isSupported(token)
+                }
                 ?.let { return it }
         }
         return null
@@ -251,19 +256,30 @@ class PlayerActivity : ComponentActivity(), MpvCore.Observer {
     private fun beginTorrentStream(magnet: String) {
         val svc = torrent ?: return
         showHud(Hud.Message("Fetching torrent…"), 2000)
-        svc.stream(magnet) { }
+        svc.add(magnet)
 
         lifecycleScope.launch {
             val engine = svc.engine
-            while (isActive && !(engine.hasMetadata() && engine.readyToStartPlayback())) {
+            // Wait for the torrent to appear, then stream that one.
+            var id: String? = null
+            while (isActive && id == null) {
+                id = engine.items.value.firstOrNull()?.id
+                if (id == null) delay(400)
+            }
+            val torrentId = id ?: return@launch
+            engine.setStreaming(torrentId)
+
+            while (isActive &&
+                !(engine.hasMetadata(torrentId) && engine.readyToStartPlayback(torrentId))
+            ) {
                 delay(500)
             }
-            val file = engine.primaryVideoPath() ?: return@launch
+            val file = engine.primaryVideoPath(torrentId) ?: return@launch
             startPlayback("file://${file.absolutePath}")
 
             // Keep racing pieces ahead of the playhead.
             while (isActive) {
-                engine.prioritizeAround(fileIndex = 0, playedFraction = mpv.playedFraction())
+                engine.prioritizeAround(torrentId, mpv.playedFraction())
                 delay(2000)
             }
         }
