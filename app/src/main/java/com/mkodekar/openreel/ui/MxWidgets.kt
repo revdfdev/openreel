@@ -3,6 +3,10 @@ package com.mkodekar.openreel.ui
 
 import androidx.compose.animation.animateColorAsState
 import androidx.compose.animation.core.animateDpAsState
+import androidx.compose.animation.core.LinearEasing
+import androidx.compose.animation.core.animateFloat
+import androidx.compose.animation.core.infiniteRepeatable
+import androidx.compose.animation.core.rememberInfiniteTransition
 import androidx.compose.animation.core.animateFloatAsState
 import androidx.compose.animation.core.tween
 import androidx.compose.foundation.BorderStroke
@@ -13,6 +17,7 @@ import androidx.compose.foundation.interaction.MutableInteractionSource
 import androidx.compose.foundation.interaction.collectIsPressedAsState
 import androidx.compose.foundation.layout.*
 import androidx.compose.foundation.layout.windowInsetsTopHeight
+import androidx.compose.ui.input.nestedscroll.nestedScroll
 import androidx.compose.foundation.shape.RoundedCornerShape
 import androidx.compose.runtime.*
 import androidx.compose.ui.Alignment
@@ -616,6 +621,111 @@ fun MxField(
             cursorBrush = androidx.compose.ui.graphics.SolidColor(Mx.colors.accent),
             keyboardOptions = androidx.compose.foundation.text.KeyboardOptions(keyboardType = keyboardType),
             modifier = Modifier.fillMaxWidth(),
+        )
+    }
+}
+
+/**
+ * Pull to refresh. MX's list.xml wraps its content in an ActivityList
+ * .SwipeRefresher; this is the same gesture drawn by hand, since Material's
+ * SwipeRefresh would drag its own look in with it.
+ *
+ * The indicator follows the finger with resistance, and firing is left to the
+ * caller so it can rescan MediaStore off the main thread.
+ */
+@Composable
+fun MxPullToRefresh(
+    refreshing: Boolean,
+    onRefresh: () -> Unit,
+    modifier: Modifier = Modifier,
+    content: @Composable () -> Unit,
+) {
+    val density = androidx.compose.ui.platform.LocalDensity.current
+    val threshold = with(density) { 72.dp.toPx() }
+    var pull by remember { mutableFloatStateOf(0f) }
+    val scope = rememberCoroutineScope()
+
+    val nested = remember {
+        object : androidx.compose.ui.input.nestedscroll.NestedScrollConnection {
+            override fun onPreScroll(
+                available: androidx.compose.ui.geometry.Offset,
+                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+            ): androidx.compose.ui.geometry.Offset {
+                // Scrolling back up first gives back any pull we took.
+                if (available.y < 0 && pull > 0f) {
+                    val used = minOf(pull, -available.y)
+                    pull -= used
+                    return androidx.compose.ui.geometry.Offset(0f, -used)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+
+            override fun onPostScroll(
+                consumed: androidx.compose.ui.geometry.Offset,
+                available: androidx.compose.ui.geometry.Offset,
+                source: androidx.compose.ui.input.nestedscroll.NestedScrollSource,
+            ): androidx.compose.ui.geometry.Offset {
+                // Only once the list itself is at the top and still pulling.
+                if (available.y > 0 && !refreshing) {
+                    // Resistance, so it does not shoot away from the finger.
+                    pull = (pull + available.y * 0.5f).coerceAtMost(threshold * 1.6f)
+                    return androidx.compose.ui.geometry.Offset(0f, available.y)
+                }
+                return androidx.compose.ui.geometry.Offset.Zero
+            }
+
+            override suspend fun onPreFling(
+                available: androidx.compose.ui.unit.Velocity,
+            ): androidx.compose.ui.unit.Velocity {
+                if (pull >= threshold && !refreshing) onRefresh()
+                pull = 0f
+                return androidx.compose.ui.unit.Velocity.Zero
+            }
+        }
+    }
+
+    Box(
+        modifier.nestedScroll(nested),
+        contentAlignment = Alignment.TopCenter,
+    ) {
+        content()
+
+        val shown = if (refreshing) threshold else pull
+        if (shown > 1f) {
+            val progress = (shown / threshold).coerceIn(0f, 1f)
+            Box(
+                Modifier
+                    .offset { androidx.compose.ui.unit.IntOffset(0, (shown * 0.6f).toInt()) }
+                    .size(34.dp)
+                    .clip(RoundedCornerShape(17.dp))
+                    .background(Mx.colors.toolbar),
+                contentAlignment = Alignment.Center,
+            ) { RefreshArc(progress, spinning = refreshing) }
+        }
+    }
+}
+
+@Composable
+private fun RefreshArc(progress: Float, spinning: Boolean) {
+    val t = rememberInfiniteTransition(label = "refresh")
+    val spin by t.animateFloat(
+        initialValue = 0f,
+        targetValue = 360f,
+        animationSpec = infiniteRepeatable(tween(850, easing = LinearEasing)),
+        label = "spin",
+    )
+    val accent = Mx.colors.accent
+    androidx.compose.foundation.Canvas(Modifier.size(18.dp)) {
+        val stroke = androidx.compose.ui.graphics.drawscope.Stroke(
+            width = 2.5.dp.toPx(),
+            cap = androidx.compose.ui.graphics.StrokeCap.Round,
+        )
+        drawArc(
+            color = accent,
+            startAngle = if (spinning) spin else -90f,
+            sweepAngle = if (spinning) 90f else 300f * progress,
+            useCenter = false,
+            style = stroke,
         )
     }
 }

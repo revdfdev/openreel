@@ -3,6 +3,7 @@ package com.mkodekar.openreel.torrent
 
 import android.app.NotificationManager
 import android.app.Service
+import android.os.Build
 import android.content.Intent
 import android.os.Binder
 import android.os.IBinder
@@ -37,6 +38,19 @@ class TorrentService : Service() {
         // libtorrent has no push for status, so poll the snapshot the UI
         // observes. Deliberately NOT on the main looper: every entry crosses
         // into native code, and this used to run on the main thread.
+        // React to battery saver turning on or off while we are running.
+        powerReceiver = object : android.content.BroadcastReceiver() {
+            override fun onReceive(c: android.content.Context?, i: Intent?) = applyPowerPolicy()
+        }.also {
+            registerReceiver(
+                it,
+                android.content.IntentFilter(
+                    android.os.PowerManager.ACTION_POWER_SAVE_MODE_CHANGED
+                ),
+            )
+        }
+        applyPowerPolicy()
+
         ticker = java.util.concurrent.Executors.newSingleThreadScheduledExecutor { r ->
             Thread(r, "torrent-status").apply { isDaemon = true }
         }.also { exec ->
@@ -45,6 +59,7 @@ class TorrentService : Service() {
                     runCatching {
                         engine.refresh()
                         publishNotifications()
+                        stopIfIdle()
                     }
                 },
                 1, 1, java.util.concurrent.TimeUnit.SECONDS,
@@ -76,10 +91,39 @@ class TorrentService : Service() {
     override fun onBind(intent: Intent?): IBinder = binder
 
     private var ticker: java.util.concurrent.ScheduledExecutorService? = null
+    private var powerReceiver: android.content.BroadcastReceiver? = null
+
+    /**
+     * Battery policy, in the spirit of LibreTorrent: downloading over the
+     * radio for an hour is expensive, so give the system every chance to let
+     * it stop. Downloads pause while the device is in battery saver, and the
+     * service stops itself once there is nothing left to do rather than
+     * lingering as a foreground service forever.
+     */
+    private fun applyPowerPolicy() {
+        val pm = getSystemService(android.os.PowerManager::class.java)
+        val saver = pm?.isPowerSaveMode == true
+        if (saver) engine.pauseAll() else engine.resumeAll()
+    }
+
+    /** Nothing downloading and nothing to seed: no reason to stay alive. */
+    private fun stopIfIdle() {
+        if (!engine.allFinished()) return
+        runCatching {
+            if (Build.VERSION.SDK_INT >= Build.VERSION_CODES.N) {
+                stopForeground(STOP_FOREGROUND_DETACH)
+            } else {
+                @Suppress("DEPRECATION") stopForeground(false)
+            }
+            stopSelf()
+        }
+    }
 
     override fun onDestroy() {
         ticker?.shutdownNow()
         ticker = null
+        powerReceiver?.let { runCatching { unregisterReceiver(it) } }
+        powerReceiver = null
         engine.stop()
         super.onDestroy()
     }

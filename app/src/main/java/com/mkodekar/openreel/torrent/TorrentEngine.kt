@@ -66,6 +66,35 @@ class TorrentEngine(private val downloadDir: File) {
     private val _items = MutableStateFlow<List<Item>>(emptyList())
     val items: StateFlow<List<Item>> = _items
 
+    /**
+     * Stop sharing a torrent once it finishes. Seeding is what keeps the
+     * radio and CPU busy long after the download is done, which is the main
+     * battery cost of a torrent client; LibreTorrent defaults the same way.
+     */
+    var stopSeedingWhenDone: Boolean = true
+
+    /** Pauses every download without tearing the session down. */
+    fun pauseAll() {
+        synchronized(hashes) { hashes.keys.toList() }.forEach { id ->
+            withHandle(id) { it.pause() }
+            synchronized(hashes) { pausedIds += id }
+        }
+        refresh()
+    }
+
+    /** Resumes everything that was paused by [pauseAll]. */
+    fun resumeAll() {
+        synchronized(hashes) { hashes.keys.toList() }.forEach { id ->
+            withHandle(id) { it.resume() }
+            synchronized(hashes) { pausedIds -= id }
+        }
+        refresh()
+    }
+
+    /** True when nothing is left to download. */
+    fun allFinished(): Boolean =
+        _items.value.let { it.isNotEmpty() && it.all { i -> i.finished } }
+
     fun start() {
         if (!session.isRunning) {
             session.start()
@@ -243,6 +272,14 @@ class TorrentEngine(private val downloadDir: File) {
             }.getOrNull()
         }
         _items.value = live
+
+        // Finished and still sharing: pause it so the radio can sleep.
+        if (stopSeedingWhenDone) {
+            live.filter { it.finished && !it.paused }.forEach { done ->
+                withHandle(done.id) { it.pause() }
+                synchronized(hashes) { pausedIds += done.id }
+            }
+        }
     }
 
     /**

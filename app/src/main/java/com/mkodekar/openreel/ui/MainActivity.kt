@@ -22,6 +22,7 @@ import androidx.compose.ui.text.input.KeyboardType
 import androidx.compose.ui.unit.dp
 import androidx.core.content.ContextCompat
 import kotlinx.coroutines.Dispatchers
+import kotlinx.coroutines.launch
 import kotlinx.coroutines.withContext
 import com.mkodekar.openreel.browse.*
 import com.mkodekar.openreel.player.PlayerActivity
@@ -147,6 +148,15 @@ class MainActivity : ComponentActivity() {
         var sort by remember { mutableStateOf(prefs.sort) }
         var openFolder by remember { mutableStateOf<String?>(null) }
         var showOptions by remember { mutableStateOf(false) }
+        var refreshing by remember { mutableStateOf(false) }
+        val scope = rememberCoroutineScope()
+
+        // One place to rescan, used by the initial load and pull-to-refresh.
+        suspend fun reload() {
+            videos = withContext(Dispatchers.IO) {
+                runCatching { repo.queryVideos() }.getOrDefault(emptyList())
+            }
+        }
 
         val request = rememberLauncherForActivityResult(
             ActivityResultContracts.RequestMultiplePermissions()
@@ -156,11 +166,19 @@ class MainActivity : ComponentActivity() {
         // LaunchedEffect runs on the Main dispatcher, so scanning MediaStore
         // here blocked the UI thread outright -- the activity never drew and
         // ActivityTaskManager reported a pause timeout. Do the query on IO.
-        LaunchedEffect(granted) {
-            if (!granted) return@LaunchedEffect
-            videos = withContext(Dispatchers.IO) {
-                runCatching { repo.queryVideos() }.getOrDefault(emptyList())
+        LaunchedEffect(granted) { if (granted) reload() }
+
+        // MediaStore does not push changes, so also rescan when the screen
+        // comes back: a video recorded in another app should be here.
+        val lifecycleOwner = androidx.lifecycle.compose.LocalLifecycleOwner.current
+        DisposableEffect(lifecycleOwner, granted) {
+            val obs = androidx.lifecycle.LifecycleEventObserver { _, event ->
+                if (event == androidx.lifecycle.Lifecycle.Event.ON_RESUME && granted) {
+                    scope.launch { reload() }
+                }
             }
+            lifecycleOwner.lifecycle.addObserver(obs)
+            onDispose { lifecycleOwner.lifecycle.removeObserver(obs) }
         }
 
         if (!granted) {
@@ -221,6 +239,17 @@ class MainActivity : ComponentActivity() {
             }
             MxDivider()
 
+            MxPullToRefresh(
+                refreshing = refreshing,
+                onRefresh = {
+                    scope.launch {
+                        refreshing = true
+                        reload()
+                        refreshing = false
+                    }
+                },
+                modifier = Modifier.weight(1f),
+            ) {
             when {
                 searching && results.isEmpty() -> Centered("Nothing matches \"${query!!.trim()}\".")
                 sorted.isEmpty() -> Centered("No videos found.")
@@ -252,6 +281,7 @@ class MainActivity : ComponentActivity() {
                     onOpen = { open(it.uri.toString()) },
                     onOverflow = { open(it.uri.toString()) },
                 )
+            }
             }
         }
 

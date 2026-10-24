@@ -36,6 +36,27 @@ android {
         }
     }
 
+    // Two brandings of the same app. Both are GPL -- see LICENSING.md: the
+    // libmpv build we link is compiled with GPL enabled, so a closed-source
+    // variant is not available without replacing the engine first. The
+    // "meizo" flavour is a rebrand, not a licence change.
+    flavorDimensions += "branding"
+    productFlavors {
+        create("foss") {
+            dimension = "branding"
+            applicationId = "com.mkodekar.openreel"
+            resValue("string", "app_name", "OpenReel")
+            buildConfigField("boolean", "MEIZO_BRANDING", "false")
+        }
+        create("meizo") {
+            dimension = "branding"
+            // A distinct id so both can be installed side by side.
+            applicationId = "com.meizo.videoplayer"
+            resValue("string", "app_name", "Meizo Video Player")
+            buildConfigField("boolean", "MEIZO_BRANDING", "true")
+        }
+    }
+
     buildTypes {
         release {
             // Signed so installs can be updated in place; a debug-signed APK
@@ -67,7 +88,7 @@ android {
         targetCompatibility = JavaVersion.VERSION_17
     }
     kotlinOptions { jvmTarget = "17" }
-    buildFeatures { compose = true }
+    buildFeatures { compose = true; buildConfig = true }
 
     // libmpv ships as a prebuilt AAR (dev.jdtech.mpv:libmpv) carrying
     // libmpv.so + the FFmpeg family for all four ABIs, so no NDK build and no
